@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { AppError } from "@/lib/errors";
 import {
@@ -19,7 +19,7 @@ import {
  * datos cacheados en la cookie).
  */
 export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

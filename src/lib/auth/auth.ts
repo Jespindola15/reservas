@@ -8,8 +8,6 @@ import { getEnv } from "@/lib/env";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { logger } from "@/lib/logger";
 
-const env = getEnv();
-const isProd = env.NODE_ENV === "production";
 
 /**
  * Autenticación con Better Auth (mantenida, compatible con Next.js App Router).
@@ -30,7 +28,10 @@ const isProd = env.NODE_ENV === "production";
  *    no se puede evadir falsificando X-Forwarded-For.
  *  - Usuarios deshabilitados no pueden crear sesión.
  */
-export const auth = betterAuth({
+function createAuth() {
+  const env = getEnv();
+  const isProd = env.NODE_ENV === "production";
+  return betterAuth({
   appName: "TURNUP",
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
@@ -99,3 +100,12 @@ export const auth = betterAuth({
   telemetry: { enabled: false },
   plugins: [nextCookies()],
 });
+}
+
+let instance: ReturnType<typeof createAuth> | undefined;
+
+/** Instancia perezosa (ver lib/db/prisma.ts): se crea en el primer uso. */
+export function getAuth() {
+  instance ??= createAuth();
+  return instance;
+}

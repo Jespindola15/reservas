@@ -25,6 +25,20 @@ function createClient() {
   });
 }
 
-export const prisma: PrismaClient = globalForPrisma.__prisma ?? createClient();
+/**
+ * Creación PEREZOSA: el cliente (y la validación del entorno) recién se crea en
+ * el primer uso. Así, si falta configuración, el error ocurre al renderizar —donde
+ * lo atrapa app/error.tsx— y no al importar el módulo (lo que tiraba toda la app).
+ */
+function getClient(): PrismaClient {
+  if (!globalForPrisma.__prisma) globalForPrisma.__prisma = createClient();
+  return globalForPrisma.__prisma;
+}
 
-if (getEnv().NODE_ENV !== "production") globalForPrisma.__prisma = prisma;
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
