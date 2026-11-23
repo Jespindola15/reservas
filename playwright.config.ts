@@ -16,6 +16,10 @@ export const E2E_ENV = {
   BETTER_AUTH_SECRET: "e2e-local-secret-not-for-real-use-0123456789",
   ALLOW_INSECURE_LOCALHOST: "true",
   TRUST_PROXY_HOPS: "0",
+  // Simula un proxy confiable: cada prueba envía su propia IP en x-real-ip,
+  // así el rate limiting de login es por IP (como en producción) y no un cupo global.
+  AUTH_CLIENT_IP_HEADER: "x-real-ip",
+  CRON_SECRET: "e2e-cron-secret-0123456789abcdef0123456789",
   SEED_SUPERADMIN_PASSWORD: "e2e-superadmin-pass-123",
   SEED_OWNER_PASSWORD: "e2e-owner-pass-1234",
 };

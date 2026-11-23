@@ -2,7 +2,8 @@ import type { SportType } from "@/generated/prisma/client";
 import { withTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { resolvePrice } from "./pricing";
-import { generateSlots, localMidnight, operatingDayRange } from "./time";
+import { PRICE_RULE_SELECT, toPriceRules } from "./service";
+import { dbDateToString, generateSlots, localMidnight, operatingDayRange, stringToDbDate } from "./time";
 
 export type AvailabilitySlot = {
   startsAt: string;
@@ -16,6 +17,11 @@ export type CourtAvailability = {
   name: string;
   sport: SportType;
   allowedDurations: number[];
+  description: string | null;
+  capacity: number | null;
+  imageIds: string[];
+  /** Motivo si el día está cerrado (feriado/cierre). */
+  closedReason: string | null;
   slots: AvailabilitySlot[];
 };
 
@@ -59,11 +65,18 @@ export async function getDayAvailability(
         sport: true,
         slotStepMinutes: true,
         allowedDurations: true,
+        basePrice: true,
+        description: true,
+        capacity: true,
+        images: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 6 },
         scheduleRules: { select: { weekday: true, openMinute: true, closeMinute: true } },
-        priceRules: {
-          select: { durationMinutes: true, weekday: true, startMinute: true, endMinute: true, amount: true },
-        },
+        priceRules: { select: PRICE_RULE_SELECT },
       },
+    });
+
+    const exceptionRows = await tx.scheduleException.findMany({
+      where: { tenantId: ctx.tenantId, date: stringToDbDate(q.operatingDate) },
+      select: { courtId: true, date: true, kind: true, openMinute: true, closeMinute: true, reason: true },
     });
 
     const allocations = await tx.courtAllocation.findMany({
@@ -73,7 +86,13 @@ export async function getDayAvailability(
         startsAt: { lt: range.to },
         endsAt: { gt: range.from },
       },
-      select: { courtId: true, startsAt: true, endsAt: true },
+      select: {
+        courtId: true,
+        startsAt: true,
+        endsAt: true,
+        // Una PENDING vencida que el job todavía no procesó NO bloquea el turno.
+        booking: { select: { status: true, expiresAt: true } },
+      },
     });
 
     const minLead = opts.forStaff ? 0 : tenant.minLeadMinutes;
@@ -86,7 +105,16 @@ export async function getDayAvailability(
       currency: tenant.currency,
       durationMinutes: q.durationMinutes,
       courts: courts.map((court) => {
-        const busy = allocations.filter((a) => a.courtId === court.id);
+        const busy = allocations.filter(
+          (a) =>
+            a.courtId === court.id &&
+            !(a.booking?.status === "PENDING" && a.booking.expiresAt && a.booking.expiresAt.getTime() <= now.getTime()),
+        );
+        const exceptions = exceptionRows
+          .filter((e) => e.courtId === null || e.courtId === court.id)
+          .map((e) => ({ ...e, date: dbDateToString(e.date) }));
+        const priceRules = toPriceRules(court.priceRules);
+        const closedReason = exceptions.find((e) => e.kind === "CLOSED")?.reason ?? null;
         const slots = court.allowedDurations.includes(q.durationMinutes)
           ? generateSlots({
               operatingDate: q.operatingDate,
@@ -94,6 +122,7 @@ export async function getDayAvailability(
               rules: court.scheduleRules,
               stepMinutes: court.slotStepMinutes,
               durationMinutes: q.durationMinutes,
+              exceptions,
             })
           : [];
         return {
@@ -101,6 +130,10 @@ export async function getDayAvailability(
           name: court.name,
           sport: court.sport,
           allowedDurations: court.allowedDurations,
+          description: court.description,
+          capacity: court.capacity,
+          imageIds: court.images.map((i) => i.id),
+          closedReason,
           slots: slots.map((s) => {
             const start = s.startsAt.getTime();
             const overlaps = busy.some(
@@ -110,10 +143,12 @@ export async function getDayAvailability(
               startsAt: s.startsAt.toISOString(),
               endsAt: s.endsAt.toISOString(),
               available: tenant.status === "ACTIVE" && !overlaps && start >= earliest && start <= latest,
-              priceAmount: resolvePrice(court.priceRules, {
+              priceAmount: resolvePrice(priceRules, {
                 durationMinutes: q.durationMinutes,
                 weekday: s.weekday,
                 localMinute: s.localMinute,
+                operatingDate: s.operatingDate,
+                basePrice: court.basePrice,
               }),
             };
           }),

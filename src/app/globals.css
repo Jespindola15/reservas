@@ -1,67 +1,77 @@
 /* =============================================================================
-   Tokens de diseño. Paleta propia: verde cancha + neutros cálidos.
+   TURNUP — tokens de diseño.
+   Negro + azul oscuro de base, verde lima como acento, blanco para texto.
+   Contraste verificado: texto #F3F6FB sobre #0B1120 ≈ 16:1; lima sobre negro ≈ 14:1.
    ============================================================================= */
 :root {
-  --bg: #f6f7f4;
-  --surface: #ffffff;
-  --surface-2: #eef1ec;
-  --border: #dde2da;
-  --text: #17201b;
-  --text-muted: #56625a;
-  --brand: #1f7a4d;
-  --brand-strong: #155c39;
-  --brand-soft: #e3f2e9;
-  --accent: #e8a33d;
-  --danger: #b4302a;
-  --danger-soft: #fbe9e7;
-  --warning-soft: #fff4dc;
-  --focus: #2b6fd6;
+  color-scheme: dark;
+  --bg: #05070d;
+  --bg-2: #0a0f1c;
+  --surface: #0e1527;
+  --surface-2: #141d33;
+  --surface-3: #1b2642;
+  --border: #22304f;
+  --border-strong: #31426b;
+  --text: #f3f6fb;
+  --text-muted: #9aa8c4;
+  --text-faint: #6c7a98;
+
+  --lime: #c8f43b;
+  --lime-strong: #b3e01f;
+  --lime-soft: rgb(200 244 59 / 12%);
+  --on-lime: #0a1004;
+
+  --blue: #4c8dff;
+  --blue-soft: rgb(76 141 255 / 14%);
+  --danger: #ff6b6b;
+  --danger-soft: rgb(255 107 107 / 13%);
+  --warning: #ffc24b;
+  --warning-soft: rgb(255 194 75 / 13%);
+  --focus: #c8f43b;
+
+  /* Alias usados por componentes de la Fase 1 */
+  --brand: var(--lime);
+  --brand-strong: var(--lime-strong);
+  --brand-soft: var(--lime-soft);
 
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 18px;
-  --shadow: 0 1px 2px rgb(16 24 20 / 6%), 0 4px 16px rgb(16 24 20 / 6%);
+  --shadow: 0 1px 0 rgb(255 255 255 / 3%) inset, 0 10px 30px rgb(0 0 0 / 35%);
 
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --display: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1411;
-    --surface: #161d19;
-    --surface-2: #1d2621;
-    --border: #2b3630;
-    --text: #e7ede9;
-    --text-muted: #a1aea6;
-    --brand: #3fb27a;
-    --brand-strong: #63c993;
-    --brand-soft: #173326;
-    --danger: #ef6a62;
-    --danger-soft: #3a1b19;
-    --warning-soft: #3a2e14;
-    --shadow: none;
-  }
-}
-
 *, *::before, *::after { box-sizing: border-box; }
-
 html, body { margin: 0; padding: 0; }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgb(76 141 255 / 10%), transparent 60%),
+    radial-gradient(900px 500px at -10% 0%, rgb(200 244 59 / 6%), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 
-a { color: var(--brand); }
+a { color: var(--lime); text-underline-offset: 3px; }
+h1, h2, h3 { line-height: 1.15; margin: 0 0 0.5rem; letter-spacing: -0.02em; font-family: var(--display); }
+h1 { font-size: 1.75rem; font-weight: 800; }
+h2 { font-size: 1.15rem; font-weight: 700; }
+h3 { font-size: 1rem; font-weight: 700; }
+code { font-family: var(--mono); font-size: 0.9em; }
 
-h1, h2, h3 { line-height: 1.2; margin: 0 0 0.5rem; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+::selection { background: var(--lime); color: var(--on-lime); }
 
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+input[type="date"], input[type="time"] { color-scheme: dark; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -69,5 +79,5 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 0.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -42,8 +42,15 @@ enum MembershipRole {
 }
 
 enum SportType {
-  FOOTBALL
+  FOOTBALL_5
+  FOOTBALL_7
+  FOOTBALL_11
   PADEL
+}
+
+enum ScheduleExceptionKind {
+  CLOSED // feriado o cierre extraordinario: no hay turnos ese día operativo
+  SPECIAL_HOURS // día especial: reemplaza el horario semanal de ese día
 }
 
 enum BookingStatus {
@@ -53,6 +60,7 @@ enum BookingStatus {
   REJECTED // rechazada por el complejo (libera el turno)
   COMPLETED // jugada (sigue ocupando: es historia)
   NO_SHOW // no se presentó (sigue ocupando: es historia)
+  EXPIRED // solicitud PENDING que venció sin aprobarse (libera el turno)
 }
 
 enum BookingSource {
@@ -169,6 +177,10 @@ model Tenant {
   bookingRequiresApproval Boolean      @default(true) @map("booking_requires_approval")
   minLeadMinutes          Int          @default(60) @map("min_lead_minutes")
   maxAdvanceDays          Int          @default(30) @map("max_advance_days")
+  /// Minutos que una solicitud PENDING retiene el turno antes de vencer.
+  pendingExpirationMinutes Int         @default(30) @map("pending_expiration_minutes")
+  /// Hasta cuántos minutos antes del inicio el jugador puede cancelar con su enlace.
+  publicCancellationMinutes Int        @default(120) @map("public_cancellation_minutes")
   contactPhone            String?      @map("contact_phone")
   contactEmail            String?      @map("contact_email")
   address                 String?
@@ -184,6 +196,8 @@ model Tenant {
   blocks        AvailabilityBlock[]
   allocations   CourtAllocation[]
   subscriptions Subscription[]
+  exceptions    ScheduleException[]
+  courtImages   CourtImage[]
   auditLogs     AuditLog[]
 
   @@map("tenants")
@@ -253,10 +267,16 @@ model Court {
   /// Duraciones permitidas en minutos (p. ej. {60,90,120}).
   allowedDurations Int[]     @default([60, 90, 120]) @map("allowed_durations")
   sortOrder        Int       @default(0) @map("sort_order")
+  /// Jugadores por equipo/cancha (informativo).
+  capacity         Int?
+  /// Precio base por 60 minutos (centavos). Se usa si ninguna regla coincide.
+  basePrice        Int?      @map("base_price")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  images        CourtImage[]
+  exceptions    ScheduleException[]
   scheduleRules CourtScheduleRule[]
   priceRules    CourtPriceRule[]
   bookings      Booking[]
@@ -296,6 +316,8 @@ model CourtPriceRule {
   weekday         Int?   @db.SmallInt
   startMinute     Int?   @map("start_minute")
   endMinute       Int?   @map("end_minute")
+  /// Tarifa para una fecha puntual (día operativo). Tiene prioridad máxima.
+  specialDate     DateTime? @map("special_date") @db.Date
   amount          Int
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -351,6 +373,11 @@ model Booking {
   idempotencyKey     String?       @map("idempotency_key")
   requestFingerprint String?       @map("request_fingerprint")
   createdByUserId    String?       @map("created_by_user_id") @db.Uuid
+  /// Solo para PENDING: hasta cuándo retiene el turno. CONFIRMED no vence.
+  expiresAt          DateTime?     @map("expires_at") @db.Timestamptz(3)
+  expiredAt          DateTime?     @map("expired_at") @db.Timestamptz(3)
+  /// Observaciones internas del complejo (nunca se muestran al jugador).
+  internalNotes      String?       @map("internal_notes")
   confirmedAt        DateTime?     @map("confirmed_at") @db.Timestamptz(3)
   cancelledAt        DateTime?     @map("cancelled_at") @db.Timestamptz(3)
   cancelReason       String?       @map("cancel_reason")
@@ -368,7 +395,46 @@ model Booking {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, startsAt])
   @@index([courtId, startsAt])
+  @@index([status, expiresAt])
   @@map("bookings")
+}
+
+/// Feriados, cierres extraordinarios y días con horario especial. courtId null = todo el complejo.
+model ScheduleException {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String                @map("tenant_id") @db.Uuid
+  courtId     String?               @map("court_id") @db.Uuid
+  /// Día operativo afectado (fecha local del complejo).
+  date        DateTime              @db.Date
+  kind        ScheduleExceptionKind
+  openMinute  Int?                  @map("open_minute")
+  closeMinute Int?                  @map("close_minute")
+  reason      String
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court? @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, date])
+  @@map("schedule_exceptions")
+}
+
+/// Imágenes de canchas guardadas en la base (tamaño acotado, tipo verificado por firma de bytes).
+model CourtImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  courtId     String   @map("court_id") @db.Uuid
+  contentType String   @map("content_type")
+  data        Bytes
+  sizeBytes   Int      @map("size_bytes")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court  @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, courtId])
+  @@map("court_images")
 }
 
 /// Bloqueo administrativo (mantenimiento, evento, etc.).

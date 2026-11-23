@@ -35,7 +35,15 @@ export async function getPublicTenantProfile(slug: string) {
     const courts = await tx.court.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, sport: true, description: true, allowedDurations: true },
+      select: {
+        id: true,
+        name: true,
+        sport: true,
+        description: true,
+        allowedDurations: true,
+        capacity: true,
+        images: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 1 },
+      },
     });
     return { tenant, courts };
   });

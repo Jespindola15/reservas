@@ -19,6 +19,8 @@ export default defineConfig({
           name: "unit",
           include: ["tests/unit/**/*.test.ts"],
           environment: "node",
+          // No tocan la base, pero importan módulos que validan el entorno al cargarse.
+          setupFiles: ["tests/support/load-test-env.ts"],
         },
       },
       {

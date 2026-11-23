@@ -4,6 +4,7 @@ import { getClientIp } from "@/lib/security/client-ip";
 import { parseOrThrow } from "@/lib/validation";
 import { publicBookingRequestSchema } from "@/modules/booking/schemas";
 import { createBooking } from "@/modules/booking/service";
+import { trackingPath } from "@/modules/booking/public-access";
 import { publicTenantContext } from "@/modules/tenant/public";
 
 /**
@@ -46,6 +47,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         endsAt: booking.endsAt.toISOString(),
         priceAmount: booking.priceAmount,
         currency: booking.currency,
+        expiresAt: booking.expiresAt?.toISOString() ?? null,
+        // Enlace PRIVADO para consultar/cancelar (código + token HMAC). Se muestra una sola vez al jugador.
+        trackingUrl: trackingPath(slug, booking.code, booking.id),
         replayed,
       },
       replayed ? 200 : 201,

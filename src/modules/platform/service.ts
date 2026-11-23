@@ -155,12 +155,11 @@ export async function platformMetrics(user: AuthUser, now: Date = new Date()) {
   assertSuperadmin(user);
   const since = new Date(now.getTime() - 30 * 86_400_000);
   return withPlatformAdmin(user.id, async (tx) => {
-    const [tenants, activeTenants, bookings30d, courts] = await Promise.all([
-      tx.tenant.count(),
-      tx.tenant.count({ where: { status: "ACTIVE" } }),
-      tx.booking.count({ where: { createdAt: { gte: since } } }),
-      tx.court.count({ where: { isActive: true } }),
-    ]);
+    // Secuencial: una transacción usa UNA conexión; no se lanzan consultas en paralelo sobre ella.
+    const tenants = await tx.tenant.count();
+    const activeTenants = await tx.tenant.count({ where: { status: "ACTIVE" } });
+    const bookings30d = await tx.booking.count({ where: { createdAt: { gte: since } } });
+    const courts = await tx.court.count({ where: { isActive: true } });
     return { tenants, activeTenants, bookings30d, courts };
   });
 }

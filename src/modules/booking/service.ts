@@ -1,11 +1,11 @@
 import type { BookingSource, BookingStatus } from "@/generated/prisma/client";
 import { audit, type Actor } from "@/lib/audit";
-import { isExclusionViolation, isUniqueViolation } from "@/lib/db/errors";
+import { isExclusionViolation, isRaised, isUniqueViolation } from "@/lib/db/errors";
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { customerContactKey, fingerprint, generateBookingCode } from "./code";
 import { resolvePrice } from "./pricing";
-import { findSlot, type Slot } from "./time";
+import { dbDateToString, findSlot, stringToDbDate, type ScheduleExceptionInput, type Slot } from "./time";
 
 /**
  * MOTOR DE RESERVAS
@@ -24,15 +24,34 @@ import { findSlot, type Slot } from "./time";
  */
 
 export const OCCUPYING_STATUSES: readonly BookingStatus[] = ["PENDING", "CONFIRMED", "COMPLETED", "NO_SHOW"];
+export const CLOSED_STATUSES: readonly BookingStatus[] = ["CANCELLED", "REJECTED", "EXPIRED"];
+
+/** Traduce rechazos de la base (triggers/restricciones) a errores de dominio. */
+export function mapDbError(e: unknown, overlapCode: "SLOT_UNAVAILABLE" | "BLOCK_CONFLICT" = "SLOT_UNAVAILABLE"): unknown {
+  if (isExclusionViolation(e)) return new AppError(overlapCode);
+  if (isRaised(e, "booking_expired")) return new AppError("BOOKING_EXPIRED");
+  if (isRaised(e, "booking_final_state")) return new AppError("BOOKING_CLOSED");
+  return e;
+}
+
+/**
+ * Vence (en la misma transacción) las PENDING atrasadas del complejo, para que
+ * un turno retenido por una solicitud vencida quede libre aunque el job no
+ * haya corrido todavía. Usa la misma función que el job (SKIP LOCKED, idempotente).
+ */
+async function expireOverdueInTenant(tx: Tx, tenantId: string) {
+  await tx.$queryRaw`SELECT booking_id FROM app_expire_pending_bookings(1000, ${tenantId}::uuid)`;
+}
 export const ACTIVE_STATUSES: readonly BookingStatus[] = ["PENDING", "CONFIRMED"];
 
 const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
-  PENDING: ["CONFIRMED", "REJECTED", "CANCELLED"],
+  PENDING: ["CONFIRMED", "REJECTED", "CANCELLED", "EXPIRED"],
   CONFIRMED: ["CANCELLED", "COMPLETED", "NO_SHOW"],
   CANCELLED: [],
   REJECTED: [],
   COMPLETED: [],
   NO_SHOW: [],
+  EXPIRED: [],
 };
 
 export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
@@ -60,6 +79,7 @@ export type BookingSummary = {
   priceAmount: number | null;
   currency: string;
   version: number;
+  expiresAt: Date | null;
 };
 
 export type CreateBookingResult = { booking: BookingSummary; replayed: boolean };
@@ -77,6 +97,7 @@ const SUMMARY_SELECT = {
   priceAmount: true,
   currency: true,
   version: true,
+  expiresAt: true,
   requestFingerprint: true,
 } as const;
 
@@ -101,6 +122,7 @@ async function loadTenantSettings(tx: Tx, tenantId: string) {
       bookingRequiresApproval: true,
       minLeadMinutes: true,
       maxAdvanceDays: true,
+      pendingExpirationMinutes: true,
     },
   });
   if (!tenant) throw new AppError("TENANT_NOT_FOUND");
@@ -108,7 +130,41 @@ async function loadTenantSettings(tx: Tx, tenantId: string) {
   return tenant;
 }
 
-async function loadCourt(tx: Tx, tenantId: string, courtId: string) {
+export const PRICE_RULE_SELECT = {
+  durationMinutes: true,
+  weekday: true,
+  startMinute: true,
+  endMinute: true,
+  specialDate: true,
+  amount: true,
+} as const;
+
+export function toPriceRules(
+  rules: { durationMinutes: number; weekday: number | null; startMinute: number | null; endMinute: number | null; specialDate: Date | null; amount: number }[],
+) {
+  return rules.map((r) => ({ ...r, specialDate: r.specialDate ? dbDateToString(r.specialDate) : null }));
+}
+
+/** Excepciones (feriados / días especiales) que aplican a una cancha en un rango de fechas. */
+export async function loadExceptions(
+  tx: Tx,
+  tenantId: string,
+  courtId: string,
+  from: string,
+  to: string,
+): Promise<ScheduleExceptionInput[]> {
+  const rows = await tx.scheduleException.findMany({
+    where: {
+      tenantId,
+      OR: [{ courtId: null }, { courtId }],
+      date: { gte: stringToDbDate(from), lte: stringToDbDate(to) },
+    },
+    select: { date: true, kind: true, openMinute: true, closeMinute: true },
+  });
+  return rows.map((r) => ({ ...r, date: dbDateToString(r.date) }));
+}
+
+async function loadCourt(tx: Tx, tenantId: string, courtId: string, around: Date) {
   // Filtro explícito por tenant ADEMÁS de RLS (defensa en profundidad).
   const court = await tx.court.findFirst({
     where: { id: courtId, tenantId, isActive: true },
@@ -116,14 +172,17 @@ async function loadCourt(tx: Tx, tenantId: string, courtId: string) {
       id: true,
       slotStepMinutes: true,
       allowedDurations: true,
+      basePrice: true,
       scheduleRules: { select: { weekday: true, openMinute: true, closeMinute: true } },
-      priceRules: {
-        select: { durationMinutes: true, weekday: true, startMinute: true, endMinute: true, amount: true },
-      },
+      priceRules: { select: PRICE_RULE_SELECT },
     },
   });
   if (!court) throw new AppError("COURT_NOT_FOUND");
-  return court;
+  // Margen de ±2 días UTC: cubre el día operativo anterior y cualquier zona horaria.
+  const from = new Date(around.getTime() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const to = new Date(around.getTime() + 2 * 86_400_000).toISOString().slice(0, 10);
+  const exceptions = Number.isNaN(around.getTime()) ? [] : await loadExceptions(tx, tenantId, court.id, from, to);
+  return { ...court, priceRules: toPriceRules(court.priceRules), exceptions };
 }
 
 type LoadedCourt = Awaited<ReturnType<typeof loadCourt>>;
@@ -146,6 +205,7 @@ function validateSlot(
     tz: tenant.timezone,
     rules: court.scheduleRules,
     stepMinutes: court.slotStepMinutes,
+    exceptions: court.exceptions,
   });
   if (!slot) throw new AppError("INVALID_SLOT");
 
@@ -160,6 +220,8 @@ function priceFor(court: LoadedCourt, slot: Slot, durationMinutes: number) {
     durationMinutes,
     weekday: slot.weekday,
     localMinute: slot.localMinute,
+    operatingDate: slot.operatingDate,
+    basePrice: court.basePrice,
   });
 }
 
@@ -196,9 +258,11 @@ export async function createBooking(
         if (existing) return replay(existing, fp);
 
         const tenant = await loadTenantSettings(tx, ctx.tenantId);
-        const court = await loadCourt(tx, ctx.tenantId, input.courtId);
+        const court = await loadCourt(tx, ctx.tenantId, input.courtId, input.startsAt);
         const minLead = input.source === "ONLINE" ? tenant.minLeadMinutes : 0;
         const slot = validateSlot(tenant, court, input.startsAt, input.durationMinutes, minLead, now);
+
+        await expireOverdueInTenant(tx, ctx.tenantId);
 
         const customerId = await upsertCustomer(tx, ctx.tenantId, {
           name: input.customer.name.trim(),
@@ -208,6 +272,11 @@ export async function createBooking(
 
         const status: BookingStatus =
           input.source === "ONLINE" && tenant.bookingRequiresApproval ? "PENDING" : "CONFIRMED";
+        // Reglas explícitas: solo las solicitudes PENDING vencen; nunca después del inicio del turno.
+        const expiresAt =
+          status === "PENDING"
+            ? new Date(Math.min(now.getTime() + tenant.pendingExpirationMinutes * 60_000, slot.startsAt.getTime()))
+            : null;
 
         const booking = await tx.booking.create({
           data: {
@@ -230,6 +299,7 @@ export async function createBooking(
             requestFingerprint: fp,
             createdByUserId: actor.userId,
             confirmedAt: status === "CONFIRMED" ? now : null,
+            expiresAt,
           },
           select: SUMMARY_SELECT,
         });
@@ -240,7 +310,13 @@ export async function createBooking(
           action: "booking.created",
           entityType: "booking",
           entityId: booking.id,
-          metadata: { source: input.source, status, courtId: court.id, startsAt: slot.startsAt.toISOString() },
+          metadata: {
+            source: input.source,
+            status,
+            courtId: court.id,
+            startsAt: slot.startsAt.toISOString(),
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
 
         return { booking: toSummary(booking), replayed: false };
@@ -304,13 +380,23 @@ export async function changeBookingStatus(
   opts: Options = {},
 ): Promise<BookingSummary> {
   const now = opts.now ?? new Date();
-  return withTenant(ctx, async (tx) => {
+  try {
+  return await withTenant(ctx, async (tx) => {
     const current = await tx.booking.findFirst({
       where: { id: input.bookingId, tenantId: ctx.tenantId },
       select: SUMMARY_SELECT,
     });
     if (!current) throw new AppError("BOOKING_NOT_FOUND");
+    if (CLOSED_STATUSES.includes(current.status)) throw new AppError("BOOKING_CLOSED");
     if (current.version !== input.expectedVersion) throw new AppError("STALE_VERSION");
+    if (
+      current.status === "PENDING" &&
+      input.to === "CONFIRMED" &&
+      current.expiresAt &&
+      current.expiresAt.getTime() <= now.getTime()
+    ) {
+      throw new AppError("BOOKING_EXPIRED");
+    }
     if (!canTransition(current.status, input.to)) throw new AppError("INVALID_TRANSITION");
     if ((input.to === "COMPLETED" || input.to === "NO_SHOW") && current.startsAt > now) {
       throw new AppError("INVALID_TRANSITION");
@@ -328,7 +414,7 @@ export async function changeBookingStatus(
       data: {
         status: input.to,
         version: { increment: 1 },
-        ...(input.to === "CONFIRMED" ? { confirmedAt: now } : {}),
+        ...(input.to === "CONFIRMED" ? { confirmedAt: now, expiresAt: null } : {}),
         ...(input.to === "CANCELLED" || input.to === "REJECTED"
           ? { cancelledAt: now, cancelReason: input.reason?.trim() || null }
           : {}),
@@ -351,6 +437,9 @@ export async function changeBookingStatus(
     });
     return toSummary(updated);
   });
+  } catch (e) {
+    throw mapDbError(e);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -371,11 +460,16 @@ export async function rescheduleBooking(
         select: SUMMARY_SELECT,
       });
       if (!current) throw new AppError("BOOKING_NOT_FOUND");
+      if (CLOSED_STATUSES.includes(current.status)) throw new AppError("BOOKING_CLOSED");
       if (current.version !== input.expectedVersion) throw new AppError("STALE_VERSION");
       if (!ACTIVE_STATUSES.includes(current.status)) throw new AppError("INVALID_TRANSITION");
+      if (current.status === "PENDING" && current.expiresAt && current.expiresAt.getTime() <= now.getTime()) {
+        throw new AppError("BOOKING_EXPIRED");
+      }
 
       const tenant = await loadTenantSettings(tx, ctx.tenantId);
-      const court = await loadCourt(tx, ctx.tenantId, input.courtId ?? current.courtId);
+      await expireOverdueInTenant(tx, ctx.tenantId);
+      const court = await loadCourt(tx, ctx.tenantId, input.courtId ?? current.courtId, input.startsAt);
       const slot = validateSlot(tenant, court, input.startsAt, input.durationMinutes, 0, now);
 
       const res = await tx.booking.updateMany({
@@ -415,9 +509,31 @@ export async function rescheduleBooking(
       return toSummary(updated);
     });
   } catch (e) {
-    if (isExclusionViolation(e)) throw new AppError("SLOT_UNAVAILABLE");
-    throw e;
+    throw mapDbError(e);
   }
+}
+
+/** Observaciones internas del complejo sobre una reserva (auditado, sin mostrar al jugador). */
+export async function setBookingInternalNotes(
+  ctx: TenantContext,
+  input: { bookingId: string; notes: string },
+  actor: Actor,
+) {
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.booking.updateMany({
+      where: { id: input.bookingId, tenantId: ctx.tenantId },
+      data: { internalNotes: input.notes.trim() || null },
+    });
+    if (res.count !== 1) throw new AppError("BOOKING_NOT_FOUND");
+    await audit(tx, {
+      tenantId: ctx.tenantId,
+      actor,
+      action: "booking.internal_notes.updated",
+      entityType: "booking",
+      entityId: input.bookingId,
+      metadata: { length: input.notes.trim().length },
+    });
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -463,8 +579,7 @@ export async function createBlock(
       return block;
     });
   } catch (e) {
-    if (isExclusionViolation(e)) throw new AppError("BLOCK_CONFLICT");
-    throw e;
+    throw mapDbError(e, "BLOCK_CONFLICT");
   }
 }
 

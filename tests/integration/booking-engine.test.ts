@@ -275,10 +275,15 @@ describe("estados, cancelación y reprogramación", () => {
     await changeBookingStatus(f.ctx, { bookingId: r.booking.id, to: "CANCELLED", expectedVersion: 1 }, publicActor, opts);
     await expectCode(
       changeBookingStatus(f.ctx, { bookingId: r.booking.id, to: "CONFIRMED", expectedVersion: 2 }, publicActor, opts),
+      "BOOKING_CLOSED",
+    );
+    const other = await createBooking(f.ctx, onlineInput(f.court.id, at(DAY, "22:00"), 60, 2), publicActor, opts);
+    await expectCode(
+      changeBookingStatus(f.ctx, { bookingId: other.booking.id, to: "REJECTED", expectedVersion: 1 }, publicActor, opts),
       "INVALID_TRANSITION",
     );
     await expectCode(
-      changeBookingStatus(f.ctx, { bookingId: r.booking.id, to: "CANCELLED", expectedVersion: 1 }, publicActor, opts),
+      changeBookingStatus(f.ctx, { bookingId: other.booking.id, to: "CANCELLED", expectedVersion: 7 }, publicActor, opts),
       "STALE_VERSION",
     );
   });

@@ -118,8 +118,8 @@ async function main() {
     address: "Ruta 8 km 40",
     approval: true,
     courts: [
-      { name: "F5 — Cancha A", sport: "FOOTBALL", durations: [60, 90], open: 14 * 60, close: 26 * 60, prices: { 60: [40_000_00, 55_000_00], 90: [58_000_00, 78_000_00] } },
-      { name: "F7 — Cancha B", sport: "FOOTBALL", durations: [60, 90, 120], open: 14 * 60, close: 26 * 60, prices: { 60: [60_000_00, 80_000_00], 90: [85_000_00, 110_000_00], 120: [110_000_00, 140_000_00] } },
+      { name: "F5 — Cancha A", sport: "FOOTBALL_5", durations: [60, 90], open: 14 * 60, close: 26 * 60, prices: { 60: [40_000_00, 55_000_00], 90: [58_000_00, 78_000_00] } },
+      { name: "F7 — Cancha B", sport: "FOOTBALL_7", durations: [60, 90, 120], open: 14 * 60, close: 26 * 60, prices: { 60: [60_000_00, 80_000_00], 90: [85_000_00, 110_000_00], 120: [110_000_00, 140_000_00] } },
     ],
   });
   await ensureTenant({
@@ -130,7 +130,7 @@ async function main() {
     approval: true,
     courts: [
       { name: "Pádel 1", sport: "PADEL", durations: [60, 90], open: 9 * 60, close: 23 * 60, prices: { 60: [15_000_00, 19_000_00], 90: [21_000_00, 26_000_00] } },
-      { name: "Fútbol 5", sport: "FOOTBALL", durations: [60], open: 16 * 60, close: 24 * 60, prices: { 60: [38_000_00, 50_000_00] } },
+      { name: "Fútbol 5", sport: "FOOTBALL_5", durations: [60], open: 16 * 60, close: 24 * 60, prices: { 60: [38_000_00, 50_000_00] } },
     ],
   });
 

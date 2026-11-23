@@ -11,9 +11,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <>
       <TopBar />
       <main className={`${ui.container} ${ui.page}`}>
-        <div className={ui.card} style={{ maxWidth: 420, margin: "2rem auto" }}>
+        <div className={ui.card} style={{ maxWidth: 420, margin: "3rem auto" }}>
+          <p className={ui.eyebrow}>Panel TURNUP</p>
           <h1>Ingresar</h1>
-          <p className={ui.muted}>Acceso para administradores de complejos.</p>
+          <p className={ui.muted}>Acceso para equipos de complejos deportivos.</p>
           <LoginForm next={next ?? null} />
         </div>
       </main>

@@ -20,7 +20,7 @@ export default async function AdminPage() {
 
   return (
     <>
-      <TopBar title="Superadministrador">
+      <TopBar>
         <Link href="/panel" className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Mis complejos</Link>
         <SignOutButton />
       </TopBar>
@@ -58,7 +58,7 @@ export default async function AdminPage() {
                         submitLabel={t.status === "ACTIVE" ? "Suspender" : "Activar"}
                         variant={t.status === "ACTIVE" ? "danger" : "secondary"}
                         small
-                        confirmMessage={t.status === "ACTIVE" ? `¿Suspender ${t.name}? Dejará de recibir reservas.` : undefined}
+                        confirm={t.status === "ACTIVE" ? { title: `¿Suspender ${t.name}?`, body: "Dejará de recibir reservas y su panel quedará inaccesible." } : undefined}
                       >
                         <input type="hidden" name="tenantId" value={t.id} />
                         <input type="hidden" name="status" value={t.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"} />

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { BookingStatus } from "@/generated/prisma/client";
 import { runAction, type ActionResult } from "@/lib/actions";
@@ -8,7 +9,7 @@ import { requireTenant } from "@/lib/auth/dal";
 import { AppError } from "@/lib/errors";
 import { parseOrThrow } from "@/lib/validation";
 import { idempotencyKeySchema, uuidSchema } from "@/modules/booking/schemas";
-import { changeBookingStatus, createBlock, createBooking, deleteBlock } from "@/modules/booking/service";
+import { changeBookingStatus, createBlock, createBooking, deleteBlock, rescheduleBooking, setBookingInternalNotes } from "@/modules/booking/service";
 import { localDateTimeToInstant } from "@/modules/booking/time";
 
 /**
@@ -25,8 +26,9 @@ const statusForm = z.object({
   reason: z.string().trim().max(300).optional(),
 });
 
-async function setStatus(slug: string, formData: FormData, to: BookingStatus, okMessage: string) {
-  return runAction(`booking.${to}`, async () => {
+async function setStatus(slug: string, formData: FormData, to: BookingStatus, okMessage: string): Promise<ActionResult> {
+  let done: string | null = null;
+  const res = await runAction(`booking.${to}`, async () => {
     const { ctx, user } = await requireTenant(slug, "booking.manage");
     const input = parseOrThrow(statusForm, Object.fromEntries(formData));
     await changeBookingStatus(
@@ -34,9 +36,13 @@ async function setStatus(slug: string, formData: FormData, to: BookingStatus, ok
       { bookingId: input.bookingId, to, expectedVersion: input.version, reason: input.reason },
       { type: "USER", userId: user.id },
     );
-    revalidatePath(`/panel/${slug}`);
+    revalidatePath(`/panel/${slug}`, "layout");
+    done = input.bookingId;
     return okMessage;
   });
+  // El aviso viaja en la URL (lista blanca de claves) para que sobreviva al refresco de la página.
+  if (done) redirect(`/panel/${slug}/reservas/${done}?ok=${to.toLowerCase()}`);
+  return res;
 }
 
 export async function confirmBookingAction(slug: string, _p: ActionResult, fd: FormData) {
@@ -47,6 +53,52 @@ export async function rejectBookingAction(slug: string, _p: ActionResult, fd: Fo
 }
 export async function cancelBookingAction(slug: string, _p: ActionResult, fd: FormData) {
   return setStatus(slug, fd, "CANCELLED", "Reserva cancelada. El turno quedó libre.");
+}
+export async function completeBookingAction(slug: string, _p: ActionResult, fd: FormData) {
+  return setStatus(slug, fd, "COMPLETED", "Marcada como jugada.");
+}
+export async function noShowBookingAction(slug: string, _p: ActionResult, fd: FormData) {
+  return setStatus(slug, fd, "NO_SHOW", "Marcada como ausente.");
+}
+
+const rescheduleForm = z.object({
+  bookingId: uuidSchema,
+  version: z.coerce.number().int().min(1),
+  courtId: uuidSchema,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().regex(/^\d{2}:\d{2}$/),
+  durationMinutes: z.coerce.number().int().min(15).max(720),
+});
+
+/** Reprogramación: misma validación de horarios y misma restricción antisolapamiento de PostgreSQL. */
+export async function rescheduleBookingAction(slug: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  let done: string | null = null;
+  const res = await runAction("booking.reschedule", async () => {
+    const { ctx, user, tenant } = await requireTenant(slug, "booking.manage");
+    const input = parseOrThrow(rescheduleForm, Object.fromEntries(fd));
+    const startsAt = localDateTimeToInstant(input.date, input.time, tenant.timezone);
+    if (!startsAt) throw new AppError("INVALID_SLOT");
+    await rescheduleBooking(
+      ctx,
+      { bookingId: input.bookingId, startsAt, durationMinutes: input.durationMinutes, courtId: input.courtId, expectedVersion: input.version },
+      { type: "USER", userId: user.id },
+    );
+    revalidatePath(`/panel/${slug}`, "layout");
+    done = input.bookingId;
+    return "Reserva reprogramada.";
+  });
+  if (done) redirect(`/panel/${slug}/reservas/${done}?ok=rescheduled`);
+  return res;
+}
+
+export async function saveInternalNotesAction(slug: string, _p: ActionResult, fd: FormData) {
+  return runAction("booking.notes", async () => {
+    const { ctx, user } = await requireTenant(slug, "booking.manage");
+    const input = parseOrThrow(z.object({ bookingId: uuidSchema, notes: z.string().max(2000) }), Object.fromEntries(fd));
+    await setBookingInternalNotes(ctx, input, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}`, "layout");
+    return "Observaciones guardadas.";
+  });
 }
 
 const manualForm = z.object({
@@ -80,7 +132,7 @@ export async function createManualBookingAction(slug: string, _p: ActionResult, 
       },
       { type: "USER", userId: user.id },
     );
-    revalidatePath(`/panel/${slug}`);
+    revalidatePath(`/panel/${slug}`, "layout");
     return replayed ? `La reserva ya estaba registrada (código ${booking.code}).` : `Reserva registrada. Código ${booking.code}.`;
   });
 }
@@ -103,7 +155,7 @@ export async function createBlockAction(slug: string, _p: ActionResult, fd: Form
     // "Hasta" menor o igual que "desde" = termina al día siguiente (p. ej. 22:00 a 02:00).
     if (endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 86_400_000);
     await createBlock(ctx, { courtId: input.courtId, startsAt, endsAt, reason: input.reason }, { type: "USER", userId: user.id });
-    revalidatePath(`/panel/${slug}`);
+    revalidatePath(`/panel/${slug}`, "layout");
     return "Horario bloqueado.";
   });
 }
@@ -113,7 +165,17 @@ export async function deleteBlockAction(slug: string, _p: ActionResult, fd: Form
     const { ctx, user } = await requireTenant(slug, "block.manage");
     const { blockId } = parseOrThrow(z.object({ blockId: uuidSchema }), Object.fromEntries(fd));
     await deleteBlock(ctx, blockId, { type: "USER", userId: user.id });
-    revalidatePath(`/panel/${slug}`);
+    revalidatePath(`/panel/${slug}`, "layout");
     return "Bloqueo eliminado.";
+  });
+}
+
+export async function saveCustomerNotesAction(slug: string, customerId: string, _p: ActionResult, fd: FormData) {
+  return runAction("customer.notes", async () => {
+    const { ctx, user } = await requireTenant(slug, "booking.manage");
+    const { updateCustomerNotes } = await import("@/modules/customers/service");
+    await updateCustomerNotes(ctx, customerId, String(fd.get("notes") ?? ""), { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}/clientes/${customerId}`);
+    return "Observaciones guardadas.";
   });
 }

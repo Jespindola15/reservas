@@ -1,4 +1,4 @@
-# Arquitectura — Fase 1
+# Arquitectura TURNUP (Fases 1 y 2)
 
 ## Capas
 
@@ -100,3 +100,38 @@ Next.js 16 activa *Cache Components* en proyectos nuevos. En esta fase casi toda
 del tenant y de la sesión; una clave de caché mal definida podría servir datos de un complejo a
 otro. Se usa renderizado dinámico explícito y se evaluará cachear la página pública (con claves por
 tenant revisadas) en una fase posterior.
+
+## Fase 2: piezas nuevas
+
+### Horarios, excepciones y precios
+- Disponibilidad de un día operativo = feriado/cierre (`CLOSED`) › horario especial (`SPECIAL_HOURS`, reemplaza
+  el semanal) › horario semanal de la cancha. Las excepciones del complejo (`court_id NULL`) aplican a todas las
+  canchas. La misma función (`windowsForDate`) la usan la disponibilidad pública, la validación de reservas
+  (online, manuales y reprogramaciones), el calendario y el dashboard: no hay dos reglas distintas.
+- Precio: fecha especial › día + franja › franja › día › general › precio base prorrateado. El importe se congela
+  en la reserva; cambiar tarifas no altera reservas existentes.
+
+### Vencimiento de solicitudes PENDING
+- Reglas explícitas: solo `PENDING` vence (CHECK `bookings_pending_has_expiry`); `CONFIRMED` y las manuales no.
+  Al confirmar se borra `expires_at`.
+- `app_expire_pending_bookings(batch, tenant?)` (SECURITY DEFINER): `FOR UPDATE SKIP LOCKED` + re-chequeo de
+  estado ⇒ ejecuciones simultáneas sin doble procesamiento e idempotencia; libera la ocupación vía trigger y
+  audita cada vencimiento en la misma sentencia.
+- Trigger `bookings_guard_status`: una PENDING vencida no puede pasar a CONFIRMED/jugada ni moverse, y los
+  estados finales no se reabren, aunque el job todavía no haya corrido o alguien use SQL directo.
+- Al crear/reprogramar se vencen primero las atrasadas del complejo, y la disponibilidad ignora PENDING vencidas.
+
+### Acceso público a la reserva
+- Código de 8 caracteres = identificador, no credencial. Ver/cancelar exige `token = HMAC-SHA256(secreto,
+  bookingId)` (256 bits, comparación en tiempo constante). Mismo error para código inexistente o token inválido.
+  Sin almacenamiento de tokens. La vista muestra solo nombre de pila. Rate limit por IP, `noindex`, sin
+  recursos de terceros (el token no se filtra por Referer).
+
+### Imágenes
+- Guardadas en `court_images` (bytea, ≤ 1,5 MB, máx. 6 por cancha) tras verificar la firma de bytes; se sirven con
+  `nosniff`, `CSP: default-src 'none'; sandbox`. Futuro: almacenamiento de objetos.
+
+### Interfaz
+- Las Server Actions re-autorizan siempre (`requireTenant` con permiso específico). Los layouts solo presentan.
+- Acciones de estado redirigen con un aviso de lista blanca (`?ok=`) para que el resultado sobreviva al refresco.
+- La reserva manual genera la clave de idempotencia en el servidor y la rota en el cliente tras cada éxito.

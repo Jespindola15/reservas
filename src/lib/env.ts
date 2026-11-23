@@ -25,6 +25,14 @@ const schema = z
       .string()
       .regex(/^[a-z0-9-]*$/)
       .default(""),
+    /**
+     * Secreto para disparar el job de vencimiento desde un cron externo
+     * (POST /api/internal/jobs/expire-pending). Vacío = endpoint deshabilitado.
+     */
+    CRON_SECRET: z.union([z.literal(""), z.string().min(32)]).default(""),
+    /** Programador interno de vencimientos (en el proceso del servidor). */
+    EXPIRATION_SCHEDULER: z.enum(["internal", "off"]).default("internal"),
+    EXPIRATION_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
     /** Solo para probar el build de producción en la máquina local (http://localhost). */
     ALLOW_INSECURE_LOCALHOST: z.enum(["true", "false"]).default("false"),
   })

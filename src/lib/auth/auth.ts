@@ -31,7 +31,7 @@ const isProd = env.NODE_ENV === "production";
  *  - Usuarios deshabilitados no pueden crear sesión.
  */
 export const auth = betterAuth({
-  appName: "Reservas",
+  appName: "TURNUP",
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   trustedOrigins: [env.BETTER_AUTH_URL],

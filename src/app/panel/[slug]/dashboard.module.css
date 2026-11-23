@@ -1,0 +1,24 @@
+.stats { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 1rem; }
+.statCard { text-decoration: none; color: var(--text); transition: border-color 0.15s ease; }
+.statCard:hover { border-color: var(--border-strong); }
+.highlight { border-color: rgb(255 194 75 / 45%); box-shadow: inset 0 0 0 1px rgb(255 194 75 / 25%); }
+
+.columns { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .columns { grid-template-columns: 1fr; } }
+
+.list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.listItem { display: flex; align-items: center; gap: 0.85rem; padding: 0.6rem 0.65rem; border-radius: 10px; text-decoration: none; color: var(--text); }
+.listItem:hover { background: var(--surface-2); }
+.time { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--lime); min-width: 3.2rem; }
+.listMain { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+.occ { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.35rem 0; }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--lime-strong), var(--lime)); }
+
+.activity { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.activity li { display: flex; flex-direction: column; }
+.activity a { color: var(--text); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+.activity a:hover { color: var(--lime); }
+
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }

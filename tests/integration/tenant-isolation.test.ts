@@ -123,7 +123,7 @@ describe("Row Level Security (rol de la app con SQL directo)", () => {
   it("con contexto de A, insertar filas con tenantId de B es rechazado por la base", async () => {
     await expect(
       withTenant(A.ctx, (tx) =>
-        tx.court.create({ data: { tenantId: B.tenant.id, name: "Intrusa", sport: "FOOTBALL" } }),
+        tx.court.create({ data: { tenantId: B.tenant.id, name: "Intrusa", sport: "FOOTBALL_5" } }),
       ),
     ).rejects.toThrow();
     expect(await owner.court.count({ where: { name: "Intrusa" } })).toBe(0);

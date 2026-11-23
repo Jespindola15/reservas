@@ -4,13 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ui from "@/components/ui.module.css";
 import styles from "./public.module.css";
 
+type Sport = "FOOTBALL_5" | "FOOTBALL_7" | "FOOTBALL_11" | "PADEL";
+type CourtInfo = { id: string; name: string; sport: Sport; description: string | null; capacity: number | null; durations: number[]; imageId: string | null };
 type Slot = { startsAt: string; endsAt: string; available: boolean; priceAmount: number | null };
-type Court = { id: string; name: string; sport: "FOOTBALL" | "PADEL"; slots: Slot[] };
-type Day = { operatingDate: string; timezone: string; currency: string; courts: Court[] };
-type Selection = { court: Court; slot: Slot; idempotencyKey: string };
-type Result = { code: string; status: "PENDING" | "CONFIRMED"; startsAt: string };
+type CourtDay = { id: string; name: string; sport: Sport; slots: Slot[]; closedReason: string | null };
+type Day = { operatingDate: string; currency: string; courts: CourtDay[] };
+type Selection = { court: CourtDay; slot: Slot; idempotencyKey: string };
+type Result = { code: string; status: "PENDING" | "CONFIRMED"; startsAt: string; trackingUrl: string; expiresAt: string | null };
 
-const SPORT: Record<Court["sport"], string> = { FOOTBALL: "Fútbol", PADEL: "Pádel" };
+const SPORT: Record<Sport, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel" };
 
 function addDays(date: string, days: number) {
   const d = new Date(`${date}T12:00:00Z`);
@@ -23,52 +25,42 @@ export function BookingWidget(props: {
   timezone: string;
   today: string;
   maxAdvanceDays: number;
-  durations: number[];
   requiresApproval: boolean;
+  courts: CourtInfo[];
 }) {
+  const sports = useMemo(() => [...new Set(props.courts.map((c) => c.sport))], [props.courts]);
+  const [sport, setSport] = useState<Sport | "ALL">(sports.length === 1 ? sports[0]! : "ALL");
+  const [courtId, setCourtId] = useState<string | "ALL">("ALL");
   const [date, setDate] = useState(props.today);
-  const [duration, setDuration] = useState(props.durations.includes(90) ? 90 : (props.durations[0] ?? 60));
+  const visibleCourts = props.courts.filter((c) => (sport === "ALL" || c.sport === sport) && (courtId === "ALL" || c.id === courtId));
+  const durations = [...new Set(visibleCourts.flatMap((c) => c.durations))].sort((a, b) => a - b);
+  const [durationPref, setDuration] = useState(90);
+  const duration = durations.includes(durationPref) ? durationPref : (durations[0] ?? 60);
   const [reloadToken, setReloadToken] = useState(0);
   const [fetched, setFetched] = useState<{ key: string; day: Day | null; error: string | null } | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const timeFmt = useMemo(
-    () => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, hour: "2-digit", minute: "2-digit", hour12: false }),
-    [props.timezone],
-  );
-  const dateFmt = useMemo(
-    () => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, weekday: "long", day: "numeric", month: "long" }),
-    [props.timezone],
-  );
-  const localDateOf = useCallback(
-    (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: props.timezone }).format(new Date(iso)),
-    [props.timezone],
-  );
-  const money = useCallback(
-    (cents: number | null, currency: string) =>
-      cents === null
-        ? "A confirmar"
-        : new Intl.NumberFormat("es-AR", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100),
-    [],
-  );
+  const timeFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, hour: "2-digit", minute: "2-digit", hour12: false }), [props.timezone]);
+  const dateFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, weekday: "long", day: "numeric", month: "long" }), [props.timezone]);
+  const pillFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", weekday: "short", day: "numeric" }), []);
+  const localDateOf = useCallback((iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: props.timezone }).format(new Date(iso)), [props.timezone]);
+  const money = (cents: number | null, currency: string) =>
+    cents === null ? "A confirmar" : new Intl.NumberFormat("es-AR", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
 
-  // Clave de la consulta vigente: si cambia fecha/duración, la respuesta vieja
-  // se descarta (AbortController) y nunca pisa a la nueva.
+  // Consulta vigente: si cambia fecha/duración, la respuesta vieja se descarta.
   const requestKey = `${date}|${duration}|${reloadToken}`;
   const loading = fetched?.key !== requestKey;
   const day = loading ? null : (fetched?.day ?? null);
   const loadError = loading ? null : (fetched?.error ?? null);
-  const load = useCallback(() => setReloadToken((t) => t + 1), []);
+  const reload = useCallback(() => setReloadToken((t) => t + 1), []);
 
   useEffect(() => {
     const ctrl = new AbortController();
-    fetch(`/api/public/${encodeURIComponent(props.slug)}/availability?date=${date}&duration=${duration}`, {
-      cache: "no-store",
-      signal: ctrl.signal,
-    })
+    fetch(`/api/public/${encodeURIComponent(props.slug)}/availability?date=${date}&duration=${duration}`, { cache: "no-store", signal: ctrl.signal })
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error?.message ?? "No pudimos cargar los horarios.");
@@ -76,25 +68,20 @@ export function BookingWidget(props: {
       })
       .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        setFetched({
-          key: requestKey,
-          day: null,
-          error: e instanceof Error ? e.message : "No pudimos cargar los horarios.",
-        });
+        setFetched({ key: requestKey, day: null, error: e instanceof Error ? e.message : "No pudimos cargar los horarios." });
       });
     return () => ctrl.abort();
   }, [props.slug, date, duration, requestKey]);
 
-  function choose(court: Court, slot: Slot) {
+  const visibleIds = new Set(visibleCourts.map((c) => c.id));
+  const dayCourts = day?.courts.filter((c) => visibleIds.has(c.id)) ?? [];
+  const pills = Array.from({ length: Math.min(7, props.maxAdvanceDays + 1) }, (_, i) => addDays(props.today, i));
+
+  function choose(court: CourtDay, slot: Slot) {
     setSubmitError(null);
-    // Nueva clave por cada intento de reserva: reintentos del MISMO envío la reutilizan.
     setSelection({ court, slot, idempotencyKey: crypto.randomUUID() });
-    // Llevar al formulario sin tapar los turnos (sin animación si el usuario la reduce).
     requestAnimationFrame(() =>
-      document.getElementById("datos")?.closest("section")?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-        block: "start",
-      }),
+      document.getElementById("datos")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }),
     );
   }
 
@@ -112,11 +99,7 @@ export function BookingWidget(props: {
           courtId: selection.court.id,
           startsAt: selection.slot.startsAt,
           durationMinutes: duration,
-          customer: {
-            name: String(form.get("name") ?? ""),
-            phone: String(form.get("phone") ?? ""),
-            email: String(form.get("email") ?? ""),
-          },
+          customer: { name: String(form.get("name") ?? ""), phone: String(form.get("phone") ?? ""), email: String(form.get("email") ?? "") },
           notes: String(form.get("notes") ?? "") || undefined,
           idempotencyKey: selection.idempotencyKey,
         }),
@@ -126,13 +109,13 @@ export function BookingWidget(props: {
         setSubmitError(json?.error?.message ?? "No pudimos registrar la reserva.");
         if (json?.error?.code === "SLOT_UNAVAILABLE") {
           setSelection(null);
-          load();
+          reload();
         }
         return;
       }
       setResult(json as Result);
       setSelection(null);
-      load();
+      reload();
     } catch {
       setSubmitError("Problema de conexión. Volvé a intentar: no se duplicará la reserva.");
     } finally {
@@ -141,159 +124,185 @@ export function BookingWidget(props: {
   }
 
   if (result) {
+    const link = `${window.location.origin}${result.trackingUrl}`;
     return (
-      <section className={ui.card} aria-live="polite">
-        <h2>{result.status === "CONFIRMED" ? "¡Reserva confirmada!" : "Solicitud recibida"}</h2>
-        <p>
-          Tu código de reserva es <strong className={styles.code}>{result.code}</strong>
-        </p>
+      <section className={`${ui.card} ${styles.success}`} aria-live="polite">
+        <p className={ui.eyebrow}>{result.status === "CONFIRMED" ? "Reserva confirmada" : "Solicitud enviada"}</p>
+        <h2>{result.status === "CONFIRMED" ? "¡Listo, nos vemos en la cancha!" : "Recibimos tu solicitud"}</h2>
+        <p>Código de seguimiento <strong className={styles.code}>{result.code}</strong></p>
         <p className={ui.muted}>
           {dateFmt.format(new Date(result.startsAt))}, {timeFmt.format(new Date(result.startsAt))} hs.
-          {result.status === "PENDING" ? " El complejo debe aprobarla; guardá el código para consultarla." : ""}
+          {result.status === "PENDING" && result.expiresAt ? ` El complejo debe aprobarla antes de las ${timeFmt.format(new Date(result.expiresAt))}; si no, el turno se libera.` : ""}
         </p>
-        <button className={`${ui.button} ${ui.buttonSecondary}`} onClick={() => setResult(null)}>
-          Hacer otra reserva
-        </button>
+        <div className={styles.linkBox}>
+          <span className={ui.label}>Tu enlace privado para consultar o cancelar</span>
+          <code className={styles.linkText}>{link}</code>
+          <div className={ui.row}>
+            <button
+              type="button"
+              className={`${ui.button} ${ui.buttonSmall}`}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  setCopied(true);
+                } catch {
+                  setCopied(false);
+                }
+              }}
+            >
+              {copied ? "¡Copiado!" : "Copiar enlace"}
+            </button>
+            <a className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={result.trackingUrl}>Ver estado</a>
+          </div>
+          <span className={ui.faint}>Guardalo: por seguridad, no se puede recuperar con el código solo.</span>
+        </div>
+        <button className={`${ui.button} ${ui.buttonGhost}`} onClick={() => { setResult(null); setCopied(false); }}>Hacer otra reserva</button>
       </section>
     );
   }
 
   return (
     <div className={styles.layout}>
-      <section className={ui.card} aria-labelledby="buscar">
-        <h2 id="buscar">Elegí día y duración</h2>
-        <div className={ui.row}>
-          <div className={ui.field}>
-            <label className={ui.label} htmlFor="date">Fecha</label>
-            <input
-              id="date"
-              className={ui.input}
-              type="date"
-              value={date}
-              min={props.today}
-              max={addDays(props.today, props.maxAdvanceDays)}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setDate(e.target.value);
-                  setSelection(null);
-                }
-              }}
-            />
-          </div>
-          <div className={ui.field}>
-            <span className={ui.label} id="dur-label">Duración</span>
-            <div className={styles.segmented} role="radiogroup" aria-labelledby="dur-label">
-              {props.durations.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  role="radio"
-                  aria-checked={d === duration}
-                  className={d === duration ? styles.segActive : styles.seg}
-                  onClick={() => {
-                    setDuration(d);
-                    setSelection(null);
-                  }}
-                >
-                  {d} min
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <p className={ui.muted}>Los turnos después de medianoche aparecen dentro del día anterior.</p>
-      </section>
-
-      <section aria-live="polite" aria-busy={loading} className={ui.stack}>
-        {loading ? <p className={ui.muted}>Cargando horarios…</p> : null}
-        {loadError ? (
-          <div className={`${ui.alert} ${ui.alertError}`} role="alert">
-            {loadError}{" "}
-            <button className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`} onClick={load}>
-              Reintentar
-            </button>
+      <section className={ui.card} aria-labelledby="paso1">
+        <h2 id="paso1"><span className={styles.step}>1</span> Deporte y cancha</h2>
+        {sports.length > 1 ? (
+          <div className={styles.chips} role="radiogroup" aria-label="Deporte">
+            {(["ALL", ...sports] as const).map((s) => (
+              <button key={s} type="button" role="radio" aria-checked={sport === s} className={sport === s ? styles.chipActive : styles.chip}
+                onClick={() => { setSport(s); setCourtId("ALL"); setSelection(null); }}>
+                {s === "ALL" ? "Todos" : SPORT[s]}
+              </button>
+            ))}
           </div>
         ) : null}
-        {!loading &&
-          day?.courts.map((court) => {
-            const free = court.slots.filter((s) => s.available);
-            return (
-              <article key={court.id} className={ui.card}>
-                <div className={styles.courtHead}>
-                  <h3>{court.name}</h3>
-                  <span className={ui.badge}>{SPORT[court.sport]}</span>
-                </div>
-                {court.slots.length === 0 ? (
-                  <p className={ui.muted}>Sin turnos de {duration} min este día.</p>
-                ) : free.length === 0 ? (
-                  <p className={ui.muted}>No quedan turnos libres este día.</p>
-                ) : null}
-                <div className={styles.slots}>
-                  {court.slots.map((slot) => {
-                    const selected = selection?.slot.startsAt === slot.startsAt && selection.court.id === court.id;
-                    const nextDay = localDateOf(slot.startsAt) !== date;
-                    return (
-                      <button
-                        key={slot.startsAt}
-                        type="button"
-                        disabled={!slot.available}
-                        className={selected ? styles.slotSelected : styles.slot}
-                        aria-pressed={selected}
-                        onClick={() => choose(court, slot)}
-                      >
-                        <span className={styles.slotTime}>
-                          {timeFmt.format(new Date(slot.startsAt))}
-                          {nextDay ? <small> (madrugada)</small> : null}
-                        </span>
-                        <span className={styles.slotPrice}>
-                          {slot.available ? money(slot.priceAmount, day.currency) : "Ocupado"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </article>
-            );
-          })}
+        <div className={styles.courtCards} role="radiogroup" aria-label="Cancha">
+          <button type="button" role="radio" aria-checked={courtId === "ALL"} className={courtId === "ALL" ? styles.courtActive : styles.courtCard}
+            onClick={() => { setCourtId("ALL"); setSelection(null); }}>
+            <span className={styles.courtThumb} aria-hidden>★</span>
+            <span><strong>Cualquier cancha</strong><span className={ui.faint}>Ver todos los horarios</span></span>
+          </button>
+          {props.courts.filter((c) => sport === "ALL" || c.sport === sport).map((c) => (
+            <button key={c.id} type="button" role="radio" aria-checked={courtId === c.id} className={courtId === c.id ? styles.courtActive : styles.courtCard}
+              onClick={() => { setCourtId(c.id); setSelection(null); }}>
+              {c.imageId ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className={styles.courtThumb} src={`/api/public/${props.slug}/courts/${c.id}/images/${c.imageId}`} alt="" loading="lazy" />
+              ) : (
+                <span className={styles.courtThumb} aria-hidden>{SPORT[c.sport].slice(0, 1)}</span>
+              )}
+              <span>
+                <strong>{c.name}</strong>
+                <span className={ui.faint}>{SPORT[c.sport]}{c.capacity ? ` · ${c.capacity} jugadores` : ""}</span>
+                {c.description ? <span className={styles.courtDesc}>{c.description}</span> : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className={ui.card} aria-labelledby="paso2">
+        <h2 id="paso2"><span className={styles.step}>2</span> Fecha y duración</h2>
+        <div className={styles.datePills} role="radiogroup" aria-label="Fecha">
+          {pills.map((d) => (
+            <button key={d} type="button" role="radio" aria-checked={date === d} className={date === d ? styles.pillActive : styles.pill}
+              onClick={() => { setDate(d); setSelection(null); }}>
+              {d === props.today ? "Hoy" : pillFmt.format(new Date(`${d}T12:00:00Z`))}
+            </button>
+          ))}
+          <label className={styles.pickDate}>
+            <span className="sr-only">Otra fecha</span>
+            <input type="date" className={ui.input} value={date} min={props.today} max={addDays(props.today, props.maxAdvanceDays)}
+              onChange={(e) => { if (e.target.value) { setDate(e.target.value); setSelection(null); } }} aria-label="Elegir otra fecha" />
+          </label>
+        </div>
+        <div className={styles.segmented} role="radiogroup" aria-label="Duración">
+          {durations.map((d) => (
+            <button key={d} type="button" role="radio" aria-checked={d === duration} className={d === duration ? styles.segActive : styles.seg}
+              onClick={() => { setDuration(d); setSelection(null); }}>
+              {d} min
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="paso3" aria-busy={loading} className={ui.stack}>
+        <h2 id="paso3" className={styles.sectionTitle}><span className={styles.step}>3</span> Horarios disponibles</h2>
+        <p className={ui.faint} style={{ marginTop: "-0.5rem" }}>Los turnos de madrugada (después de las 00:00) aparecen dentro del día anterior.</p>
+        {loading ? <div className={`${ui.skeleton}`} style={{ height: 160 }} aria-label="Cargando horarios" /> : null}
+        {loadError ? (
+          <div className={`${ui.alert} ${ui.alertError}`} role="alert">
+            {loadError} <button className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`} onClick={reload}>Reintentar</button>
+          </div>
+        ) : null}
+        {!loading && day && dayCourts.length === 0 ? <p className={ui.empty}>No hay canchas con turnos de {duration} min para ese filtro.</p> : null}
+        {!loading && day ? dayCourts.map((court) => {
+          const free = court.slots.filter((s) => s.available);
+          return (
+            <article key={court.id} className={ui.card}>
+              <div className={ui.spread} style={{ marginBottom: "0.75rem" }}>
+                <h3 style={{ margin: 0 }}>{court.name}</h3>
+                <span className={ui.badge}>{SPORT[court.sport]}</span>
+              </div>
+              {court.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`}>Cerrado: {court.closedReason}</p>
+                : court.slots.length === 0 ? <p className={ui.muted}>Sin turnos de {duration} min este día.</p>
+                : free.length === 0 ? <p className={ui.muted}>No quedan turnos libres este día.</p> : null}
+              <div className={styles.slots}>
+                {court.slots.map((slot) => {
+                  const selected = selection?.slot.startsAt === slot.startsAt && selection.court.id === court.id;
+                  return (
+                    <button key={slot.startsAt} type="button" disabled={!slot.available} className={selected ? styles.slotSelected : styles.slot}
+                      aria-pressed={selected} onClick={() => choose(court, slot)}>
+                      <span className={styles.slotTime}>
+                        {timeFmt.format(new Date(slot.startsAt))}
+                        {localDateOf(slot.startsAt) !== date ? <small> madrugada</small> : null}
+                      </span>
+                      <span className={styles.slotPrice}>{slot.available ? money(slot.priceAmount, day.currency) : "Ocupado"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </article>
+          );
+        }) : null}
       </section>
 
       {selection ? (
-        <section className={`${ui.card} ${styles.checkout}`} aria-labelledby="datos">
-          <h2 id="datos">Tus datos</h2>
-          <p className={ui.muted}>
-            {selection.court.name} · {dateFmt.format(new Date(selection.slot.startsAt))} ·{" "}
-            {timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} ·{" "}
-            {money(selection.slot.priceAmount, day?.currency ?? "ARS")}
-          </p>
+        <section className={`${ui.card} ${styles.checkout}`} id="datos" aria-labelledby="paso4">
+          <h2 id="paso4"><span className={styles.step}>4</span> Tus datos</h2>
+          <div className={styles.summary}>
+            <span><strong>{selection.court.name}</strong></span>
+            <span>{dateFmt.format(new Date(selection.slot.startsAt))}</span>
+            <span>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} ({duration} min)</span>
+            <span className={styles.total}>{money(selection.slot.priceAmount, day?.currency ?? "ARS")}</span>
+          </div>
           <form onSubmit={submit} className={ui.stack}>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="name">Nombre y apellido</label>
+            <label className={ui.field}>
+              <span className={ui.label}>Nombre y apellido</span>
               <input className={ui.input} id="name" name="name" required minLength={2} maxLength={80} autoComplete="name" />
-            </div>
+            </label>
             <div className={ui.grid2}>
-              <div className={ui.field}>
-                <label className={ui.label} htmlFor="phone">Teléfono</label>
+              <label className={ui.field}>
+                <span className={ui.label}>Teléfono</span>
                 <input className={ui.input} id="phone" name="phone" type="tel" required minLength={6} maxLength={30} autoComplete="tel" />
-              </div>
-              <div className={ui.field}>
-                <label className={ui.label} htmlFor="email">Email</label>
+              </label>
+              <label className={ui.field}>
+                <span className={ui.label}>Email</span>
                 <input className={ui.input} id="email" name="email" type="email" required maxLength={254} autoComplete="email" />
-              </div>
+              </label>
             </div>
-            <div className={ui.field}>
-              <label className={ui.label} htmlFor="notes">Comentarios (opcional)</label>
+            <label className={ui.field}>
+              <span className={ui.label}>Comentarios (opcional)</span>
               <textarea className={ui.textarea} id="notes" name="notes" maxLength={500} />
-            </div>
+            </label>
             {submitError ? <p role="alert" className={`${ui.alert} ${ui.alertError}`}>{submitError}</p> : null}
             <div className={ui.row}>
               <button className={ui.button} type="submit" disabled={submitting}>
+                {submitting ? <span className={ui.spinner} aria-hidden /> : null}
                 {submitting ? "Enviando…" : props.requiresApproval ? "Solicitar reserva" : "Confirmar reserva"}
               </button>
-              <button type="button" className={`${ui.button} ${ui.buttonSecondary}`} onClick={() => setSelection(null)}>
-                Cambiar horario
-              </button>
+              <button type="button" className={`${ui.button} ${ui.buttonSecondary}`} onClick={() => setSelection(null)}>Cambiar horario</button>
             </div>
-            <p className={ui.muted}>No se realiza ningún pago online. El pago se coordina con el complejo.</p>
+            <p className={ui.faint}>No se realiza ningún pago online. El importe se abona en el complejo.</p>
           </form>
         </section>
       ) : null}

@@ -18,6 +18,45 @@ import { DateTime } from "luxon";
 
 export type ScheduleRule = { weekday: number; openMinute: number; closeMinute: number };
 
+/**
+ * Excepción de calendario para un día operativo (YYYY-MM-DD):
+ *  - CLOSED: feriado/cierre, ese día no hay turnos (gana sobre todo lo demás).
+ *  - SPECIAL_HOURS: reemplaza el horario semanal de ese día por estas franjas.
+ */
+export type ScheduleExceptionInput = {
+  date: string;
+  kind: "CLOSED" | "SPECIAL_HOURS";
+  openMinute: number | null;
+  closeMinute: number | null;
+};
+
+/** Franjas efectivas de un día operativo, considerando feriados y días especiales. */
+export function windowsForDate(
+  operatingDate: string,
+  weekday: number,
+  rules: readonly ScheduleRule[],
+  exceptions: readonly ScheduleExceptionInput[] = [],
+): { openMinute: number; closeMinute: number }[] {
+  const today = exceptions.filter((e) => e.date === operatingDate);
+  if (today.some((e) => e.kind === "CLOSED")) return [];
+  const special = today.filter(
+    (e): e is ScheduleExceptionInput & { openMinute: number; closeMinute: number } =>
+      e.kind === "SPECIAL_HOURS" && e.openMinute !== null && e.closeMinute !== null,
+  );
+  if (special.length > 0) return special.map((e) => ({ openMinute: e.openMinute, closeMinute: e.closeMinute }));
+  return rules.filter((r) => r.weekday === weekday).map((r) => ({ openMinute: r.openMinute, closeMinute: r.closeMinute }));
+}
+
+/** Date de Prisma (@db.Date, medianoche UTC) -> "YYYY-MM-DD". */
+export function dbDateToString(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** "YYYY-MM-DD" -> Date para columnas @db.Date. */
+export function stringToDbDate(s: string): Date {
+  return new Date(`${s}T00:00:00.000Z`);
+}
+
 export type Slot = {
   startsAt: Date;
   endsAt: Date;
@@ -82,14 +121,14 @@ export function generateSlots(params: {
   rules: readonly ScheduleRule[];
   stepMinutes: number;
   durationMinutes: number;
+  exceptions?: readonly ScheduleExceptionInput[];
 }): Slot[] {
   const { operatingDate, tz, rules, stepMinutes, durationMinutes } = params;
   const weekday = weekdayOf(operatingDate, tz);
   if (weekday === null || stepMinutes <= 0 || durationMinutes <= 0) return [];
 
   const byStart = new Map<number, Slot>();
-  for (const rule of rules) {
-    if (rule.weekday !== weekday) continue;
+  for (const rule of windowsForDate(operatingDate, weekday, rules, params.exceptions)) {
     const windowEnd = closingInstant(operatingDate, rule.closeMinute, tz);
     if (!windowEnd) continue;
     for (let m = rule.openMinute; m < rule.closeMinute; m += stepMinutes) {
@@ -123,6 +162,7 @@ export function findSlot(params: {
   tz: string;
   rules: readonly ScheduleRule[];
   stepMinutes: number;
+  exceptions?: readonly ScheduleExceptionInput[];
 }): Slot | null {
   const local = DateTime.fromJSDate(params.startsAt, { zone: params.tz });
   if (!local.isValid) return null;
@@ -137,6 +177,7 @@ export function findSlot(params: {
       rules: params.rules,
       stepMinutes: params.stepMinutes,
       durationMinutes: params.durationMinutes,
+      exceptions: params.exceptions,
     });
     const hit = slots.find((s) => s.startsAt.getTime() === target);
     if (hit) return hit;

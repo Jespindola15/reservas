@@ -34,6 +34,10 @@ const nextConfig: NextConfig = {
   // y por tenant/sesión; preferimos renderizado dinámico explícito antes que
   // arriesgar una caché compartida entre complejos. Ver docs/ARQUITECTURA.md.
   poweredByHeader: false,
+  experimental: {
+    // Subida de imágenes de canchas (máx. 1,5 MB validado en el servidor).
+    serverActions: { bodySizeLimit: "2mb" },
+  },
   serverExternalPackages: ["pg"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

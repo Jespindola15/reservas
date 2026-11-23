@@ -23,7 +23,7 @@ async function load(slug: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const res = await load(slug);
-  return { title: res.ok ? res.data.tenant.name : "Complejo no disponible" };
+  return { title: res.ok ? `${res.data.tenant.name} — Reservá tu turno` : "Complejo no disponible" };
 }
 
 export default async function TenantPublicPage({ params }: Props) {
@@ -42,42 +42,44 @@ export default async function TenantPublicPage({ params }: Props) {
   }
 
   const { tenant, courts } = res.data;
-  const durations = [...new Set(courts.flatMap((c) => c.allowedDurations))].sort((a, b) => a - b);
 
   return (
     <>
       <TopBar />
-      <main className={`${ui.container} ${ui.page}`}>
+      <main>
         <section className={styles.hero}>
-          {tenant.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={tenant.logoUrl} alt="" className={styles.logo} width={72} height={72} />
-          ) : (
-            <div className={styles.logoFallback} aria-hidden>
-              {tenant.name.slice(0, 1).toUpperCase()}
+          <div className={`${ui.container} ${styles.heroInner}`}>
+            <div className={styles.logoFallback} aria-hidden>{tenant.name.slice(0, 1).toUpperCase()}</div>
+            <div className={styles.heroText}>
+              <p className={ui.eyebrow}>Reservá online</p>
+              <h1>{tenant.name}</h1>
+              {tenant.description ? <p className={styles.lead}>{tenant.description}</p> : null}
+              <p className={ui.muted}>{[tenant.address, tenant.contactPhone].filter(Boolean).join(" · ")}</p>
             </div>
-          )}
-          <div>
-            <h1>{tenant.name}</h1>
-            {tenant.description ? <p className={ui.muted}>{tenant.description}</p> : null}
-            <p className={ui.muted}>
-              {[tenant.address, tenant.contactPhone].filter(Boolean).join(" · ")}
-            </p>
           </div>
         </section>
-
-        {courts.length === 0 ? (
-          <p className={`${ui.alert} ${ui.alertWarn}`}>Todavía no hay canchas habilitadas para reservar.</p>
-        ) : (
-          <BookingWidget
-            slug={tenant.slug}
-            timezone={tenant.timezone}
-            today={todayIn(tenant.timezone)}
-            maxAdvanceDays={tenant.maxAdvanceDays}
-            durations={durations}
-            requiresApproval={tenant.bookingRequiresApproval}
-          />
-        )}
+        <div className={`${ui.container} ${ui.page}`}>
+          {courts.length === 0 ? (
+            <p className={`${ui.alert} ${ui.alertWarn}`}>Todavía no hay canchas habilitadas para reservar.</p>
+          ) : (
+            <BookingWidget
+              slug={tenant.slug}
+              timezone={tenant.timezone}
+              today={todayIn(tenant.timezone)}
+              maxAdvanceDays={tenant.maxAdvanceDays}
+              requiresApproval={tenant.bookingRequiresApproval}
+              courts={courts.map((c) => ({
+                id: c.id,
+                name: c.name,
+                sport: c.sport,
+                description: c.description,
+                capacity: c.capacity,
+                durations: c.allowedDurations,
+                imageId: c.images[0]?.id ?? null,
+              }))}
+            />
+          )}
+        </div>
       </main>
     </>
   );

@@ -43,3 +43,9 @@ export function isUniqueViolation(e: unknown, indexName?: string): boolean {
 export function isPermissionDenied(e: unknown): boolean {
   return pgCode(e) === "42501";
 }
+
+/** Excepción lanzada por nuestros triggers (RAISE EXCEPTION 'mensaje'). */
+export function isRaised(e: unknown, message: string): boolean {
+  const cause = getCause(e);
+  return pgCode(e) === "P0001" && (cause?.originalMessage?.includes(message) ?? false);
+}

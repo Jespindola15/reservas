@@ -21,6 +21,13 @@ export const ERROR_CATALOG = {
   INVALID_TRANSITION: { status: 409, message: "La reserva no admite ese cambio de estado." },
   STALE_VERSION: { status: 409, message: "La reserva fue modificada por otra persona. Recargá e intentá de nuevo." },
   IDEMPOTENCY_MISMATCH: { status: 422, message: "Esta solicitud ya fue usada con datos distintos." },
+  BOOKING_EXPIRED: { status: 409, message: "La solicitud venció y el turno fue liberado. No puede confirmarse." },
+  BOOKING_CLOSED: { status: 409, message: "La reserva ya está cerrada (cancelada, rechazada o vencida)." },
+  COURT_HAS_HISTORY: { status: 409, message: "La cancha tiene reservas registradas: no se puede eliminar, solo desactivar." },
+  IMAGE_INVALID: { status: 422, message: "La imagen debe ser JPG, PNG o WebP de hasta 1,5 MB." },
+  LIMIT_REACHED: { status: 422, message: "Se alcanzó el máximo permitido para este elemento." },
+  INVALID_LINK: { status: 404, message: "El enlace no es válido o la reserva no existe." },
+  CANCELLATION_WINDOW_CLOSED: { status: 409, message: "Ya no se puede cancelar online. Comunicate con el complejo." },
   RATE_LIMITED: { status: 429, message: "Demasiados intentos. Esperá un momento y volvé a probar." },
   INTERNAL: { status: 500, message: "Ocurrió un error inesperado. Intentá nuevamente." },
 } as const;
