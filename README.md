@@ -86,6 +86,34 @@ npm run check              # todo lo anterior
 - Migraciones con `prisma migrate deploy` usando `MIGRATION_DATABASE_URL`.
 - Varias instancias: `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` igual en todas.
 
+## Deploy en Netlify
+
+La instalación y el build funcionan sin secretos (`prisma generate` no necesita la base; el build usa
+marcadores). Pero **la app no funciona en runtime sin una base PostgreSQL accesible desde internet** (Neon,
+Supabase, Railway, etc.) y estas variables en *Site configuration → Environment variables*:
+
+| Variable | Valor |
+|---|---|
+| `DATABASE_URL` | URL del rol **reservas_app** (con `?sslmode=require` si el proveedor lo pide) |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | `https://TU-SITIO.netlify.app` (o tu dominio) |
+| `AUTH_CLIENT_IP_HEADER` | `x-nf-client-connection-ip` (cabecera que pone Netlify) |
+| `CRON_SECRET` | ≥ 32 caracteres (lo usa la función programada de vencimientos) |
+| `EXPIRATION_SCHEDULER` | `off` (en serverless el temporizador en memoria no sirve; vence la función programada) |
+
+Preparar la base **una vez, desde tu máquina** (no desde Netlify):
+
+```bash
+psql "URL_ADMIN_DEL_PROVEEDOR" -v owner_pw="'...'" -v app_pw="'...'" -f db/bootstrap.sql
+# crear la base con dueño reservas_owner (o usar la del proveedor y transferirla), luego:
+MIGRATION_DATABASE_URL="postgresql://reservas_owner:...@HOST/DB?sslmode=require" npx prisma migrate deploy
+```
+
+- `netlify.toml` fija Node 22 y `npm run build`.
+- `netlify/functions/expire-pending.mts` es una función programada que cada minuto dispara el job de vencimiento.
+- Si el proveedor no permite crear roles (`CREATE ROLE`) o la extensión `btree_gist`, no sirve: la app depende de
+  ambos para el aislamiento (RLS) y la protección antisolapamiento.
+
 ## Nuevas migraciones
 
 ```bash

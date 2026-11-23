@@ -62,9 +62,22 @@ export type Env = z.infer<typeof schema>;
 
 let cached: Env | undefined;
 
+/**
+ * Durante `next build` (Netlify, CI) no hay secretos ni base: se usan valores
+ * de marcador SOLO para poder evaluar los módulos. Ninguna página estática
+ * consulta la base, y en runtime el proceso vuelve a validar el entorno real.
+ */
+const BUILD_PLACEHOLDERS = {
+  DATABASE_URL: "postgresql://build:build@localhost:5432/build-placeholder",
+  BETTER_AUTH_SECRET: "build-time-placeholder-secret-never-used-at-runtime",
+  BETTER_AUTH_URL: "https://build.invalid",
+};
+
 export function getEnv(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+  const source = isBuild ? { ...BUILD_PLACEHOLDERS, ...process.env } : process.env;
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Configuración de entorno inválida: ${detail}`);
