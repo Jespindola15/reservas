@@ -1,0 +1,437 @@
+// =============================================================================
+// Esquema de datos — SaaS de reservas deportivas (Fase 1)
+//
+// Convenciones:
+//  - Modelos en PascalCase, columnas en snake_case vía @map, tablas en plural.
+//  - Toda entidad de negocio lleva tenantId (complejo). Las relaciones hacia
+//    canchas y clientes usan claves compuestas (tenantId, id) para que la BD
+//    impida mezclar datos de distintos complejos.
+//  - Partes que Prisma no puede expresar (restricciones de exclusión, columnas
+//    generadas, triggers, CHECKs y Row Level Security) viven en SQL dentro de
+//    las migraciones. Ver prisma/migrations/*/migration.sql y docs/ARQUITECTURA.md.
+//  - Montos de dinero en centavos (Int) para evitar errores de punto flotante.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum PlatformRole {
+  USER
+  SUPERADMIN
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum SportType {
+  FOOTBALL
+  PADEL
+}
+
+enum BookingStatus {
+  PENDING // solicitud online esperando aprobación (ocupa el turno)
+  CONFIRMED // confirmada (ocupa el turno)
+  CANCELLED // cancelada (libera el turno)
+  REJECTED // rechazada por el complejo (libera el turno)
+  COMPLETED // jugada (sigue ocupando: es historia)
+  NO_SHOW // no se presentó (sigue ocupando: es historia)
+}
+
+enum BookingSource {
+  ONLINE
+  MANUAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum ActorType {
+  USER
+  PLATFORM_ADMIN
+  PUBLIC
+  SYSTEM
+}
+
+// -----------------------------------------------------------------------------
+// Autenticación (tablas que usa Better Auth). Globales: no pertenecen a un tenant.
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false) @map("email_verified")
+  image         String?
+  platformRole  PlatformRole @default(USER) @map("platform_role")
+  isDisabled    Boolean      @default(false) @map("is_disabled")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions    Session[]
+  accounts    Account[]
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  token     String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id") @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+/// Contador de rate limiting compartido entre instancias (ventana fija).
+model RateLimit {
+  key         String   @id
+  windowStart DateTime @map("window_start") @db.Timestamptz(3)
+  count       Int
+
+  @@map("rate_limits")
+}
+
+// -----------------------------------------------------------------------------
+// Plataforma
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id                      String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                    String       @unique
+  name                    String
+  description             String?
+  logoUrl                 String?      @map("logo_url")
+  timezone                String       @default("America/Argentina/Buenos_Aires")
+  currency                String       @default("ARS") @db.Char(3)
+  status                  TenantStatus @default(ACTIVE)
+  bookingRequiresApproval Boolean      @default(true) @map("booking_requires_approval")
+  minLeadMinutes          Int          @default(60) @map("min_lead_minutes")
+  maxAdvanceDays          Int          @default(30) @map("max_advance_days")
+  contactPhone            String?      @map("contact_phone")
+  contactEmail            String?      @map("contact_email")
+  address                 String?
+  createdAt               DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships   Membership[]
+  courts        Court[]
+  scheduleRules CourtScheduleRule[]
+  priceRules    CourtPriceRule[]
+  customers     Customer[]
+  bookings      Booking[]
+  blocks        AvailabilityBlock[]
+  allocations   CourtAllocation[]
+  subscriptions Subscription[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
+model Membership {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Plan {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique
+  name        String
+  priceAmount Int      @map("price_amount")
+  currency    String   @default("ARS") @db.Char(3)
+  maxCourts   Int?     @map("max_courts")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String             @map("tenant_id") @db.Uuid
+  planId             String             @map("plan_id") @db.Uuid
+  status             SubscriptionStatus
+  currentPeriodStart DateTime           @map("current_period_start") @db.Timestamptz(3)
+  currentPeriodEnd   DateTime           @map("current_period_end") @db.Timestamptz(3)
+  notes              String?
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+// -----------------------------------------------------------------------------
+// Complejo: canchas, horarios y precios
+// -----------------------------------------------------------------------------
+
+model Court {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  name             String
+  sport            SportType
+  description      String?
+  isActive         Boolean   @default(true) @map("is_active")
+  /// Cada cuántos minutos puede empezar un turno (30 = 18:00, 18:30, ...).
+  slotStepMinutes  Int       @default(30) @map("slot_step_minutes")
+  /// Duraciones permitidas en minutos (p. ej. {60,90,120}).
+  allowedDurations Int[]     @default([60, 90, 120]) @map("allowed_durations")
+  sortOrder        Int       @default(0) @map("sort_order")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scheduleRules CourtScheduleRule[]
+  priceRules    CourtPriceRule[]
+  bookings      Booking[]
+  blocks        AvailabilityBlock[]
+  allocations   CourtAllocation[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("courts")
+}
+
+/// Franja de apertura de una cancha para un día de la semana (1=lunes ... 7=domingo),
+/// expresada en minutos desde la medianoche local. closeMinute puede superar 1440
+/// para franjas que cruzan la medianoche (p. ej. 18:00 a 02:00 = 1080..1560).
+model CourtScheduleRule {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String @map("tenant_id") @db.Uuid
+  courtId     String @map("court_id") @db.Uuid
+  weekday     Int    @db.SmallInt
+  openMinute  Int    @map("open_minute")
+  closeMinute Int    @map("close_minute")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court  @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, courtId])
+  @@map("court_schedule_rules")
+}
+
+/// Precio por duración. weekday y la franja horaria son opcionales: la regla más
+/// específica que coincida gana (weekday + franja > franja > weekday > general).
+model CourtPriceRule {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
+  courtId         String @map("court_id") @db.Uuid
+  durationMinutes Int    @map("duration_minutes")
+  weekday         Int?   @db.SmallInt
+  startMinute     Int?   @map("start_minute")
+  endMinute       Int?   @map("end_minute")
+  amount          Int
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court  Court  @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, courtId])
+  @@map("court_price_rules")
+}
+
+// -----------------------------------------------------------------------------
+// Clientes y reservas
+// -----------------------------------------------------------------------------
+
+model Customer {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  /// Clave de deduplicación: email normalizado o "tel:<dígitos>".
+  contactKey String   @map("contact_key")
+  name       String
+  phone      String?
+  email      String?
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, contactKey])
+  @@map("customers")
+}
+
+model Booking {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String        @map("tenant_id") @db.Uuid
+  courtId            String        @map("court_id") @db.Uuid
+  customerId         String        @map("customer_id") @db.Uuid
+  /// Código legible para el cliente (único por complejo).
+  code               String
+  status             BookingStatus
+  source             BookingSource
+  startsAt           DateTime      @map("starts_at") @db.Timestamptz(3)
+  endsAt             DateTime      @map("ends_at") @db.Timestamptz(3)
+  durationMinutes    Int           @map("duration_minutes")
+  /// Precio congelado al momento de reservar (centavos). Null = a confirmar.
+  priceAmount        Int?          @map("price_amount")
+  currency           String        @db.Char(3)
+  customerName       String        @map("customer_name")
+  customerPhone      String?       @map("customer_phone")
+  customerEmail      String?       @map("customer_email")
+  notes              String?
+  idempotencyKey     String?       @map("idempotency_key")
+  requestFingerprint String?       @map("request_fingerprint")
+  createdByUserId    String?       @map("created_by_user_id") @db.Uuid
+  confirmedAt        DateTime?     @map("confirmed_at") @db.Timestamptz(3)
+  cancelledAt        DateTime?     @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason       String?       @map("cancel_reason")
+  /// Optimistic locking para cambios de estado/reprogramación.
+  version            Int           @default(1)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court      Court            @relation(fields: [tenantId, courtId], references: [tenantId, id])
+  customer   Customer         @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  allocation CourtAllocation?
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, startsAt])
+  @@index([courtId, startsAt])
+  @@map("bookings")
+}
+
+/// Bloqueo administrativo (mantenimiento, evento, etc.).
+model AvailabilityBlock {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  courtId         String   @map("court_id") @db.Uuid
+  startsAt        DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime @map("ends_at") @db.Timestamptz(3)
+  reason          String
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court      Court            @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+  allocation CourtAllocation?
+
+  @@index([tenantId, startsAt])
+  @@map("availability_blocks")
+}
+
+/// Ocupación efectiva de una cancha. La mantienen EXCLUSIVAMENTE triggers sobre
+/// bookings y availability_blocks. Una restricción EXCLUDE USING gist sobre
+/// (court_id, period) garantiza en la base que dos ocupaciones nunca se solapen,
+/// sin importar qué código (o cuántas solicitudes concurrentes) intente escribir.
+model CourtAllocation {
+  id        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String                    @map("tenant_id") @db.Uuid
+  courtId   String                    @map("court_id") @db.Uuid
+  bookingId String?                   @unique @map("booking_id") @db.Uuid
+  blockId   String?                   @unique @map("block_id") @db.Uuid
+  startsAt  DateTime                  @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime                  @map("ends_at") @db.Timestamptz(3)
+  /// Columna generada: tstzrange(starts_at, ends_at, '[)').
+  period    Unsupported("tstzrange")? @default(dbgenerated("tstzrange(starts_at, ends_at, '[)'::text)"))
+
+  tenant  Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court   Court              @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)
+  booking Booking?           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  block   AvailabilityBlock? @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startsAt])
+  @@map("court_allocations")
+}
+
+// -----------------------------------------------------------------------------
+// Auditoría (solo inserción para el rol de la aplicación)
+// -----------------------------------------------------------------------------
+
+model AuditLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String?   @map("tenant_id") @db.Uuid
+  actorType   ActorType @map("actor_type")
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String?   @map("entity_id")
+  metadata    Json?
+  ip          String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
