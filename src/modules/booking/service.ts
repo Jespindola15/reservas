@@ -3,6 +3,8 @@ import { audit, type Actor } from "@/lib/audit";
 import { isExclusionViolation, isRaised, isUniqueViolation } from "@/lib/db/errors";
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
+import { notifyTenant } from "@/modules/inbox/service";
+import { amountDueFor, loadTransferSettings, MAX_UNPAID_HOLDS, transferConfigured } from "@/modules/payments/transfers";
 import { enqueueBookingEvent } from "@/modules/notifications/outbox";
 import { customerContactKey, fingerprint, generateBookingCode } from "./code";
 import { resolvePrice } from "./pricing";
@@ -75,6 +77,8 @@ export type CreateBookingInput = {
   playerUserId?: string | null;
   /** Origen de la reserva online (catálogo de TURNUP o enlace directo del complejo). */
   origin?: "MARKETPLACE" | "DIRECT" | null;
+  /** Titular de la cuenta desde la que se transferirá, si NO es el jugador. */
+  transferPayerName?: string | null;
 };
 
 export type BookingSummary = {
@@ -89,6 +93,8 @@ export type BookingSummary = {
   currency: string;
   version: number;
   expiresAt: Date | null;
+  paymentStatus: string | null;
+  amountDue: number | null;
 };
 
 export type CreateBookingResult = { booking: BookingSummary; replayed: boolean };
@@ -109,6 +115,8 @@ const SUMMARY_SELECT = {
   currency: true,
   version: true,
   expiresAt: true,
+  paymentStatus: true,
+  amountDue: true,
   requestFingerprint: true,
 } as const;
 
@@ -134,6 +142,8 @@ async function loadTenantSettings(tx: Tx, tenantId: string) {
       minLeadMinutes: true,
       maxAdvanceDays: true,
       pendingExpirationMinutes: true,
+      depositType: true,
+      depositValue: true,
     },
   });
   if (!tenant) throw new AppError("TENANT_NOT_FOUND");
@@ -241,6 +251,8 @@ function priceFor(court: LoadedCourt, slot: Slot, durationMinutes: number) {
 // Crear reserva (online o manual)
 // -----------------------------------------------------------------------------
 
+export { MAX_UNPAID_HOLDS };
+
 export async function createBooking(
   ctx: TenantContext,
   input: CreateBookingInput,
@@ -293,12 +305,37 @@ export async function createBooking(
           }
         }
 
+        // Transferencia directa: si el complejo pide seña o pago anticipado, la reserva online queda
+        // PENDIENTE DE TRANSFERENCIA con el turno bloqueado por un tiempo limitado.
+        const price = priceFor(court, slot, input.durationMinutes);
+        const needsTransfer = input.source === "ONLINE" && tenant.depositType !== "NONE";
+        let amountDue: number | null = null;
+        let transferWindow = 0;
+        if (needsTransfer) {
+          const settings = await loadTransferSettings(tx, ctx.tenantId);
+          if (!transferConfigured(tenant.depositType, settings)) throw new AppError("PAYMENTS_NOT_CONFIGURED");
+          amountDue = amountDueFor(price, tenant.depositType, tenant.depositValue);
+          if (amountDue === null) throw new AppError("AMOUNT_UNAVAILABLE");
+          transferWindow = settings!.transferWindowMinutes;
+          // Nadie puede bloquear varios turnos sin pagar (por contacto o por cuenta).
+          const holds = await tx.booking.count({
+            where: {
+              tenantId: ctx.tenantId,
+              status: "PENDING",
+              paymentStatus: "AWAITING_TRANSFER",
+              expiresAt: { gt: now },
+              OR: [{ customerId }, ...(input.playerUserId ? [{ playerUserId: input.playerUserId }] : [])],
+            },
+          });
+          if (holds >= MAX_UNPAID_HOLDS) throw new AppError("HOLD_LIMIT");
+        }
+
         const status: BookingStatus =
-          input.source === "ONLINE" && tenant.bookingRequiresApproval ? "PENDING" : "CONFIRMED";
+          needsTransfer || (input.source === "ONLINE" && tenant.bookingRequiresApproval) ? "PENDING" : "CONFIRMED";
         // Reglas explícitas: solo las solicitudes PENDING vencen; nunca después del inicio del turno.
         const expiresAt =
           status === "PENDING"
-            ? new Date(Math.min(now.getTime() + tenant.pendingExpirationMinutes * 60_000, slot.startsAt.getTime()))
+            ? new Date(Math.min(now.getTime() + (needsTransfer ? transferWindow : tenant.pendingExpirationMinutes) * 60_000, slot.startsAt.getTime()))
             : null;
 
         const booking = await tx.booking.create({
@@ -312,7 +349,10 @@ export async function createBooking(
             startsAt: slot.startsAt,
             endsAt: slot.endsAt,
             durationMinutes: input.durationMinutes,
-            priceAmount: priceFor(court, slot, input.durationMinutes),
+            priceAmount: price,
+            paymentStatus: input.source === "ONLINE" ? (needsTransfer ? "AWAITING_TRANSFER" : "NOT_REQUIRED") : null,
+            amountDue: needsTransfer ? amountDue : null,
+            transferPayerName: needsTransfer ? (input.transferPayerName?.trim() || null) : null,
             currency: tenant.currency,
             customerName: input.customer.name.trim(),
             customerPhone: input.customer.phone.trim(),
@@ -346,6 +386,15 @@ export async function createBooking(
         });
         // Outbox: los avisos existen solo si esta transacción confirma.
         await enqueueBookingEvent(tx, ctx.tenantId, booking.id, { type: "created" });
+        if (input.source === "ONLINE") {
+          await notifyTenant(tx, ctx.tenantId, {
+            kind: "booking_requested",
+            title: needsTransfer ? `Nueva reserva esperando transferencia · ${booking.code}` : status === "PENDING" ? `Nueva solicitud de reserva · ${booking.code}` : `Nueva reserva online · ${booking.code}`,
+            body: `${input.customer.name.trim()} · ${slot.operatingDate} ${String(Math.floor(slot.localMinute / 60) % 24).padStart(2, "0")}:${String(slot.localMinute % 60).padStart(2, "0")}`,
+            link: needsTransfer ? "/transferencias?estado=pendientes" : `/reservas/${booking.id}`,
+            bookingId: booking.id,
+          });
+        }
 
         return { booking: toSummary(booking), replayed: false };
       });
@@ -426,6 +475,11 @@ export async function changeBookingStatus(
       throw new AppError("BOOKING_EXPIRED");
     }
     if (!canTransition(current.status, input.to)) throw new AppError("INVALID_TRANSITION");
+    // Una reserva que espera transferencia solo se confirma VERIFICANDO el pago (Transferencias):
+    // así queda quién verificó, cuándo y cuánto. Informar ≠ verificar.
+    if (input.to === "CONFIRMED" && (current.paymentStatus === "AWAITING_TRANSFER" || current.paymentStatus === "TRANSFER_REPORTED")) {
+      throw new AppError("TRANSFER_VERIFY_REQUIRED");
+    }
     if ((input.to === "COMPLETED" || input.to === "NO_SHOW") && current.startsAt > now) {
       throw new AppError("INVALID_TRANSITION");
     }

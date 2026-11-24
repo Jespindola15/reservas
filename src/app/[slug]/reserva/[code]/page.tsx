@@ -11,11 +11,17 @@ import { formatMoney } from "@/modules/booking/pricing";
 import { getPublicBooking } from "@/modules/booking/public-access";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
 import { SPORT_LABEL } from "@/modules/courts/service";
-import { cancelOwnBookingAction } from "./actions";
+import { TransferPanel } from "@/components/transfer/TransferPanel";
+import { cancelOwnBookingAction, reportTransferAction } from "./actions";
 import styles from "../../public.module.css";
 
 // Página privada: no indexar ni cachear. La URL contiene el token del jugador.
 export const metadata: Metadata = { title: "Tu reserva", robots: { index: false, follow: false } };
+
+const PAYMENT: Record<string, { label: string; text: string }> = {
+  AWAITING_TRANSFER: { label: "Pendiente de transferencia", text: "Tu turno todavía no está confirmado. Realizá la transferencia e informá el pago para que el complejo pueda verificarlo." },
+  TRANSFER_REPORTED: { label: "Transferencia informada", text: "Informaste la transferencia. El turno se confirma cuando el complejo verifique el pago." },
+};
 
 const STATUS: Record<string, { label: string; text: string }> = {
   PENDING: { label: "Pendiente de aprobación", text: "El complejo todavía no confirmó tu solicitud." },
@@ -57,16 +63,42 @@ export default async function TrackingPage({ params, searchParams }: { params: P
               <p className={ui.eyebrow}>{view.tenant.name}</p>
               <h1 id="t">Hola, {view.firstName}</h1>
               <div className={ui.spread} style={{ margin: "0.75rem 0 1rem" }}>
-                <span className={`${ui.badge} ${ui[`badge${view.status}`] ?? ""}`}>{STATUS[view.status]?.label}</span>
+                <span className={`${ui.badge} ${ui[`badge${view.status}`] ?? ""}`}>
+                  {view.status === "PENDING" && PAYMENT[view.paymentStatus ?? ""] ? PAYMENT[view.paymentStatus ?? ""]!.label : STATUS[view.status]?.label}
+                </span>
                 <span className={styles.code}>{view.code}</span>
               </div>
               {cancelada && view.status === "CANCELLED" ? <p role="status" className={`${ui.alert} ${ui.alertOk}`}>Tu reserva fue cancelada. El turno quedó libre.</p> : null}
-              <p>{STATUS[view.status]?.text}</p>
+              <p>{view.status === "PENDING" && PAYMENT[view.paymentStatus ?? ""] ? PAYMENT[view.paymentStatus ?? ""]!.text : STATUS[view.status]?.text}</p>
+              {view.status === "CONFIRMED" && view.paymentStatus === "VERIFIED" ? <p className={ui.faint}>El complejo verificó tu transferencia.</p> : null}
+              {view.transfer && view.amountDue ? (
+                <div className={ui.stack} style={{ margin: "1rem 0" }}>
+                  <TransferPanel
+                    transfer={view.transfer}
+                    amountDue={view.amountDue}
+                    currency={view.currency}
+                    code={view.code}
+                    deadline={view.expiresAt ? view.expiresAt.toISOString() : null}
+                    reported={view.paymentStatus === "TRANSFER_REPORTED"}
+                    timezone={view.tenant.timezone}
+                  />
+                  {view.paymentStatus === "AWAITING_TRANSFER" ? (
+                    <ActionForm action={reportTransferAction.bind(null, slug, view.code, t)} submitLabel="Ya realicé la transferencia" className={ui.stack}
+                      confirm={{ title: "¿Ya transferiste?", body: "Avisaremos al complejo para que verifique el pago. Informalo solo si la transferencia ya fue enviada.", confirmLabel: "Sí, ya transferí" }}>
+                      <label className={ui.field}>
+                        <span className={ui.label}>Número de operación (opcional)</span>
+                        <input className={ui.input} name="reference" maxLength={40} inputMode="text" autoComplete="off" />
+                      </label>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              ) : null}
               <dl className={styles.dl}>
                 <dt>Cancha</dt><dd>{view.court.name} · {SPORT_LABEL[view.court.sport]}</dd>
                 <dt>Turno</dt><dd>{formatLocalDateTime(view.startsAt, view.tenant.timezone)} a {formatLocalTime(view.endsAt, view.tenant.timezone)}</dd>
-                <dt>Precio</dt><dd>{formatMoney(view.priceAmount, view.currency)} <span className={ui.faint}>(se abona en el complejo)</span></dd>
-                {view.expiresAt ? (<><dt>Aprobación</dt><dd>Si no se confirma antes de {formatLocalDateTime(view.expiresAt, view.tenant.timezone)}, el turno se libera.</dd></>) : null}
+                <dt>Precio</dt><dd>{formatMoney(view.priceAmount, view.currency)}</dd>
+                {view.amountDue ? (<><dt>{view.amountDue === view.priceAmount ? "A transferir" : "Seña a transferir"}</dt><dd>{formatMoney(view.amountDue, view.currency)}{view.priceAmount !== null && view.amountDue < view.priceAmount ? <span className={ui.faint}> · saldo {formatMoney(view.priceAmount - view.amountDue, view.currency)} en el complejo</span> : null}</dd></>) : null}
+                {view.expiresAt && !view.transfer ? (<><dt>Aprobación</dt><dd>Si no se confirma antes de {formatLocalDateTime(view.expiresAt, view.tenant.timezone)}, el turno se libera.</dd></>) : null}
                 {view.tenant.address ? (<><dt>Dirección</dt><dd>{view.tenant.address}</dd></>) : null}
                 {view.tenant.contactPhone ? (<><dt>Contacto</dt><dd>{view.tenant.contactPhone}</dd></>) : null}
               </dl>

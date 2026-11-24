@@ -4,7 +4,7 @@ import { TopBar } from "@/components/TopBar";
 import { ActionForm } from "@/components/ActionForm";
 import { PlayerShell } from "@/components/player/PlayerShell";
 import { getCurrentUser } from "@/lib/auth/dal";
-import { prisma } from "@/lib/db/prisma";
+import { trackProfileView } from "@/modules/marketplace/catalog";
 import { listFavoriteTenantIds } from "@/modules/player/favorites";
 import { listPublicReviews } from "@/modules/player/reviews";
 import { reportReviewAction, toggleFavoriteAction } from "../cuenta/actions";
@@ -61,19 +61,21 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
     );
   }
 
-  const { tenant, courts, logoId, coverId, galleryIds } = res.data;
+  const { tenant, courts, logoId, coverId, galleryIds, transferReady } = res.data;
   const user = await getCurrentUser().catch(() => null);
   const [reviews, favIds] = await Promise.all([listPublicReviews(tenant.slug, 20), user ? listFavoriteTenantIds(user.id) : Promise.resolve([] as string[])]);
   const isFavorite = favIds.includes(tenant.id);
   const ratingAvg = reviews.length ? reviews.reduce((a, r) => a + r.rating, 0) / reviews.length : null;
   // Contador de visitas (sin IP ni datos personales); un fallo nunca rompe la página.
-  await prisma.$queryRaw`SELECT app_track_profile_view(${tenant.slug})`.catch(() => undefined);
+  await trackProfileView(tenant.slug).catch(() => undefined);
   const deposit =
     tenant.depositType === "PERCENT" && tenant.depositValue > 0
       ? `Seña del ${tenant.depositValue} % del turno.`
       : tenant.depositType === "FIXED" && tenant.depositValue > 0
         ? `Seña de ${formatMoney(tenant.depositValue, tenant.currency)}.`
-        : null;
+        : tenant.depositType === "FULL"
+          ? "Se transfiere el total del turno al reservar."
+          : null;
   const asset = (id: string) => `/api/public/${tenant.slug}/assets/${id}`;
   const wa = whatsappLink(tenant.whatsapp ?? tenant.contactPhone, `Hola ${tenant.name}, quería consultar por un turno.`);
   const maps = directionsUrl(tenant);
@@ -151,7 +153,7 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
           {deposit || tenant.cancellationPolicy ? (
             <section className={ui.card} aria-labelledby="politicas" style={{ marginBottom: "1rem" }}>
               <h2 id="politicas" className={styles.infoTitle}>Políticas de reserva</h2>
-              {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se abona directamente al complejo; TURNUP no cobra online."}</p> : null}
+              {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se transfiere directo a la cuenta del complejo; TURNUP no recibe ni retiene dinero."}</p> : null}
               {tenant.cancellationPolicy ? <p className={ui.muted} style={{ margin: 0 }}>{tenant.cancellationPolicy}</p> : null}
             </section>
           ) : null}
@@ -193,7 +195,8 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
               tenantName={tenant.name}
               tenantAddress={[tenant.address, tenant.city].filter(Boolean).join(", ") || null}
               currency={tenant.currency}
-              deposit={{ type: tenant.depositType as "NONE" | "PERCENT" | "FIXED", value: tenant.depositValue, note: tenant.depositNote }}
+              deposit={{ type: tenant.depositType as "NONE" | "PERCENT" | "FIXED" | "FULL", value: tenant.depositValue, note: tenant.depositNote }}
+              transferReady={transferReady}
               origin={desde === "marketplace" ? "MARKETPLACE" : "DIRECT"}
               player={user ? { name: user.name, email: user.email } : null}
             />

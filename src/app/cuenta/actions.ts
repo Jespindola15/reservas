@@ -7,8 +7,8 @@ import { requireUser } from "@/lib/auth/dal";
 import { AppError } from "@/lib/errors";
 import { getClientIp } from "@/lib/security/client-ip";
 import { claimBookingByLink } from "@/modules/booking/public-access";
-import { registerPlayer, setPlayerAvatar, updatePlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
-import { cancelPlayerBooking } from "@/modules/player/bookings";
+import { registerPlayer, updatePlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
+import { cancelPlayerBooking, reportPlayerTransfer } from "@/modules/player/bookings";
 import { toggleFavorite } from "@/modules/player/favorites";
 import { createReview, reportReviewAsPlayer } from "@/modules/player/reviews";
 
@@ -49,22 +49,6 @@ export async function updateProfileAction(_p: ActionResult, fd: FormData): Promi
   });
 }
 
-export async function avatarAction(_p: ActionResult, fd: FormData): Promise<ActionResult> {
-  return runAction("player.avatar", async () => {
-    const user = await requireUser();
-    if (fd.get("remove") === "1") {
-      await setPlayerAvatar(user.id, null);
-      revalidatePath("/perfil");
-      return "Foto eliminada.";
-    }
-    const file = fd.get("avatar");
-    if (!(file instanceof File) || file.size === 0) throw new AppError("IMAGE_INVALID");
-    await setPlayerAvatar(user.id, new Uint8Array(await file.arrayBuffer()));
-    revalidatePath("/perfil");
-    return "Foto actualizada.";
-  });
-}
-
 export async function toggleFavoriteAction(slug: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
   return runAction("player.favorite", async () => {
     const user = await requireUser();
@@ -73,6 +57,30 @@ export async function toggleFavoriteAction(slug: string, _p: ActionResult, _fd: 
     revalidatePath("/");
     revalidatePath("/perfil");
     return on ? "Agregado a favoritos." : "Quitado de favoritos.";
+  });
+}
+
+export async function markMyInboxReadAction(_p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("player.inbox_read", async () => {
+    const user = await requireUser();
+    const { markPlayerInboxRead } = await import("@/modules/inbox/service");
+    await markPlayerInboxRead(user.id);
+    revalidatePath("/avisos");
+    return "Listo.";
+  });
+}
+
+/** "Ya realicé la transferencia" desde Mis turnos (jugador con cuenta). Informar ≠ pago verificado. */
+export async function reportMyTransferAction(bookingId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("player.transfer_report", async () => {
+    const user = await requireUser();
+    const raw = String(fd.get("reference") ?? "").trim();
+    const reference = raw ? raw.replace(/[^0-9A-Za-z-]/g, "").slice(0, 40) || null : null;
+    const res = await reportPlayerTransfer(user.id, bookingId, reference);
+    revalidatePath("/mis-turnos");
+    return res.status === "late"
+      ? "El plazo para transferir ya había vencido. Avisamos al complejo para que revise tu caso manualmente."
+      : "Listo, avisamos al complejo. Tu turno se confirma cuando verifique la transferencia.";
   });
 }
 

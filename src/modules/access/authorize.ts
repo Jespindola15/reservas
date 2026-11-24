@@ -23,6 +23,14 @@ export const PERMISSIONS = {
   "team.manage": ["OWNER", "ADMIN"],
   "data.export": ["OWNER", "ADMIN"],
   "payment.record": ["OWNER", "ADMIN", "STAFF"],
+  /**
+   * Datos bancarios del complejo (alias, CBU/CVU, titular): SOLO el dueño. Un administrador podría
+   * desviar los cobros a otra cuenta; por eso no puede cambiarlos (sí verlos y verificar pagos).
+   */
+  "payments.configure": ["OWNER"],
+  // Verificar transferencias mueve dinero real del complejo: solo dueño y administradores.
+  "payments.verify": ["OWNER", "ADMIN"],
+  "payments.read": ["OWNER", "ADMIN", "STAFF"],
   "payment.void": ["OWNER", "ADMIN"],
   "stats.read": ["OWNER", "ADMIN"],
 } as const satisfies Record<string, readonly MembershipRole[]>;

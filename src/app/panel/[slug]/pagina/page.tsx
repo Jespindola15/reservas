@@ -155,21 +155,13 @@ export default async function PublicPageSettings({ params }: { params: Promise<{
           </div>
         </section>
         <section className={ui.card}>
-          <div className={ui.cardHeader}><h2>Seña</h2></div>
-          <div className={ui.grid3}>
-            <label className={ui.field}><span className={ui.label}>Condición</span>
-              <select className={ui.select} name="depositType" defaultValue={b.depositType}>
-                <option value="NONE">Sin seña</option><option value="PERCENT">Porcentaje del turno</option><option value="FIXED">Monto fijo</option>
-              </select>
-            </label>
-            <label className={ui.field}><span className={ui.label}>Valor (% o $)</span>
-              <input className={ui.input} name="depositValue" type="number" min={0} step="any" defaultValue={b.depositType === "FIXED" ? b.depositValue / 100 : b.depositValue} />
-            </label>
-            <label className={ui.field}><span className={ui.label}>Cómo se paga</span>
-              <input className={ui.input} name="depositNote" maxLength={300} defaultValue={b.depositNote ?? ""} placeholder="Ej.: transferencia al alias complejo.mp" />
-            </label>
-          </div>
-          <span className={ui.hint}>Se muestra en el resumen de la reserva (seña y saldo). TURNUP no cobra online: registrás la seña a mano en la reserva.</span>
+          <div className={ui.cardHeader}><h2>Seña y cobros</h2></div>
+          <p className={ui.muted} style={{ marginTop: 0 }}>
+            El pago anticipado y los datos para transferir se configuran en <a href={`/panel/${slug}/cobros`}>Datos de cobro</a> (solo el dueño).
+          </p>
+          <label className={ui.field}><span className={ui.label}>Aclaración para el jugador (opcional)</span>
+            <input className={ui.input} name="depositNote" maxLength={300} defaultValue={b.depositNote ?? ""} placeholder="Ej.: el saldo se abona en efectivo al llegar" />
+          </label>
         </section>
         <section className={ui.card}>
           <div className={ui.cardHeader}><h2>Novedad o promoción</h2></div>

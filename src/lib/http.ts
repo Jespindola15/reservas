@@ -16,6 +16,9 @@ export function jsonError(e: unknown, context: Record<string, unknown> = {}) {
   const { status, body } = toPublicError(e);
   const requestId = randomUUID();
   if (!isAppError(e)) logger.error("http.unhandled_error", e, { requestId, ...context });
+  // Errores de negocio (4xx): antes no dejaban rastro y eso impidió diagnosticar reservas fallidas.
+  // Solo código y nombres de campos inválidos: nunca valores enviados (datos personales).
+  else logger.warn("http.app_error", { requestId, code: e.code, status, fields: Array.isArray(e.details?.fields) ? e.details.fields : undefined, ...context });
   const headers: Record<string, string> = { ...SECURITY_HEADERS };
   if (isAppError(e) && e.code === "RATE_LIMITED" && typeof e.details?.retryAfter === "number") {
     headers["Retry-After"] = String(e.details.retryAfter);

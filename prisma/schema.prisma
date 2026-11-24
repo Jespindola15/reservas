@@ -134,6 +134,10 @@ model User {
   image            String?
   platformRole     PlatformRole @default(USER) @map("platform_role")
   isDisabled       Boolean      @default(false) @map("is_disabled")
+  /// Suspensión administrativa (motivo y fecha) y anonimización (baja con datos personales borrados).
+  suspendedAt      DateTime?    @map("suspended_at") @db.Timestamptz(3)
+  suspendedReason  String?      @map("suspended_reason")
+  anonymizedAt     DateTime?    @map("anonymized_at") @db.Timestamptz(3)
   /// Better Auth (plugin twoFactor). Obligatorio para superadministradores.
   twoFactorEnabled Boolean?     @default(false) @map("two_factor_enabled")
   createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -237,6 +241,9 @@ model Tenant {
   timezone                  String       @default("America/Argentina/Buenos_Aires")
   currency                  String       @default("ARS") @db.Char(3)
   status                    TenantStatus @default(ACTIVE)
+  suspendedReason           String?      @map("suspended_reason")
+  /// Archivado (baja lógica): oculto en todos lados, datos conservados.
+  archivedAt                DateTime?    @map("archived_at") @db.Timestamptz(3)
   bookingRequiresApproval   Boolean      @default(true) @map("booking_requires_approval")
   minLeadMinutes            Int          @default(60) @map("min_lead_minutes")
   maxAdvanceDays            Int          @default(30) @map("max_advance_days")
@@ -305,6 +312,9 @@ model Tenant {
   assets               TenantAsset[]
   subscriptionPayments SubscriptionPayment[]
   favorites            PlayerFavorite[]
+  paymentSettings      TenantPaymentSettings?
+  paymentIncidents     PaymentIncident[]
+  inbox                InboxNotification[]
   reviews              Review[]
   reviewReports        ReviewReport[]
   dailyViews           TenantDailyView[]
@@ -508,6 +518,18 @@ model Booking {
   seriesId           String?       @map("series_id") @db.Uuid
   /// Cuenta de jugador dueña de la reserva (null = invitado). Nunca da acceso al panel.
   playerUserId       String?       @map("player_user_id") @db.Uuid
+  /// Estado FINANCIERO (separado del estado de la reserva). null = reserva sin cobro previo (manual/antigua).
+  paymentStatus      String?       @map("payment_status")
+  /// Importe a transferir calculado por el SERVIDOR al crear la reserva (seña o total), en centavos.
+  amountDue          Int?          @map("amount_due")
+  /// Titular de la cuenta de origen si NO es el jugador (para que el complejo encuentre el movimiento).
+  transferPayerName  String?       @map("transfer_payer_name")
+  transferReference  String?       @map("transfer_reference")
+  transferReportedAt DateTime?     @map("transfer_reported_at") @db.Timestamptz(3)
+  paymentVerifiedAt  DateTime?     @map("payment_verified_at") @db.Timestamptz(3)
+  paymentVerifiedBy  String?       @map("payment_verified_by") @db.Uuid
+  /// Aviso al complejo de que el plazo de revisión está por vencer (una sola vez).
+  reviewAlertedAt    DateTime?     @map("review_alerted_at") @db.Timestamptz(3)
   /// De dónde vino la reserva online: MARKETPLACE (catálogo de TURNUP) o DIRECT (enlace del complejo).
   origin             String?
   /// Optimistic locking para cambios de estado/reprogramación.
@@ -522,6 +544,7 @@ model Booking {
   series     BookingSeries?   @relation(fields: [tenantId, seriesId], references: [tenantId, id])
   payments   BookingPayment[]
   player     User?            @relation("PlayerBookings", fields: [playerUserId], references: [id], onDelete: SetNull)
+  incidents  PaymentIncident[]
   review     Review?
 
   @@unique([tenantId, id])
@@ -821,6 +844,8 @@ model PlayerProfile {
   phone           String?
   city            String?
   favoriteSports  String[]  @default([]) @map("favorite_sports")
+  /// OBSOLETO (Fase 5): los jugadores ya no tienen foto. Columnas vaciadas por migración; se eliminan
+  /// en una migración posterior al despliegue (compatibilidad con la versión publicada).
   avatar          Bytes?
   avatarUpdatedAt DateTime? @map("avatar_updated_at") @db.Timestamptz(3)
   notifyEmail     Boolean   @default(true) @map("notify_email")
@@ -900,4 +925,69 @@ model TenantDailyView {
 
   @@id([tenantId, day])
   @@map("tenant_daily_views")
+}
+
+// ---------------------------------------------------------------- Transferencias directas (Fase 5)
+
+/// Datos de cobro del complejo. El dinero va DIRECTO a su cuenta; TURNUP no lo toca.
+model TenantPaymentSettings {
+  tenantId              String   @id @map("tenant_id") @db.Uuid
+  alias                 String?
+  cbuCvu                String?  @map("cbu_cvu")
+  holderName            String?  @map("holder_name")
+  bankName              String?  @map("bank_name")
+  /// Minutos que tiene el jugador para transferir e informar (bloquea el turno).
+  transferWindowMinutes Int      @default(30) @map("transfer_window_minutes")
+  /// Minutos que tiene el complejo para revisar una transferencia informada.
+  reviewWindowMinutes   Int      @default(180) @map("review_window_minutes")
+  instructions          String?
+  updatedByUserId       String?  @map("updated_by_user_id") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_payment_settings")
+}
+
+/// Incidencia de pago: dinero recibido por una reserva vencida/rechazada, transferencia tardía, devolución.
+model PaymentIncident {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  bookingId       String    @map("booking_id") @db.Uuid
+  kind            String
+  status          String    @default("OPEN")
+  amount          Int?
+  notes           String?
+  resolution      String?
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+  resolvedByUserId String?  @map("resolved_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@map("payment_incidents")
+}
+
+/// Notificación interna (bandeja) para el equipo de un complejo o para un jugador con cuenta.
+model InboxNotification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String?   @map("tenant_id") @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  kind      String
+  title     String
+  body      String?
+  link      String?
+  bookingId String?   @map("booking_id") @db.Uuid
+  readAt    DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, readAt, createdAt])
+  @@index([userId, readAt, createdAt])
+  @@map("inbox_notifications")
 }

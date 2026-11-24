@@ -15,6 +15,9 @@ const ICONS: Record<string, string> = {
   ajustes: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
   estadisticas: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   opiniones: "M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z",
+  transferencias: "M2 7h20v12H2zM2 11h20M6 15h4",
+  avisos: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
+  cobros: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
   publica: "M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5",
 };
 
@@ -26,19 +29,22 @@ function Icon({ name }: { name: string }) {
   );
 }
 
-export function SidebarNav({ slug, canManage }: { slug: string; canManage: boolean }) {
+export function SidebarNav({ slug, canManage, badges }: { slug: string; canManage: boolean; badges?: { unread: number; transfers: number } }) {
   const pathname = usePathname();
   const base = `/panel/${slug}`;
-  const items = [
+  const items: { href: string; label: string; icon: string; exact?: boolean; count?: number }[] = [
     { href: base, label: "Inicio", icon: "inicio", exact: true },
     { href: `${base}/calendario`, label: "Calendario", icon: "calendario" },
     { href: `${base}/reservas`, label: "Reservas", icon: "reservas" },
+    { href: `${base}/transferencias`, label: "Transferencias", icon: "transferencias", count: badges?.transfers },
+    { href: `${base}/avisos`, label: "Avisos", icon: "avisos", count: badges?.unread },
     { href: `${base}/clientes`, label: "Clientes", icon: "clientes" },
     ...(canManage
       ? [
           { href: `${base}/estadisticas`, label: "Estadísticas", icon: "estadisticas" },
           { href: `${base}/canchas`, label: "Canchas y precios", icon: "canchas" },
           { href: `${base}/horarios`, label: "Feriados y bloqueos", icon: "horarios" },
+          { href: `${base}/cobros`, label: "Datos de cobro", icon: "cobros" },
           { href: `${base}/equipo`, label: "Equipo", icon: "equipo" },
           { href: `${base}/pagina`, label: "Página pública", icon: "publica" },
           { href: `${base}/opiniones`, label: "Opiniones", icon: "opiniones" },
@@ -54,6 +60,7 @@ export function SidebarNav({ slug, canManage }: { slug: string; canManage: boole
           <Link key={it.href} href={it.href} className={active ? styles.navActive : styles.navItem} aria-current={active ? "page" : undefined}>
             <Icon name={it.icon} />
             {it.label}
+            {it.count ? <span className={styles.navCount} aria-label={`${it.count} pendientes`}>{it.count > 99 ? "99+" : it.count}</span> : null}
           </Link>
         );
       })}

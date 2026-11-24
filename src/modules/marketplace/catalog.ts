@@ -134,3 +134,11 @@ export async function loadAnnouncements(limit = 10): Promise<Announcement[]> {
     SELECT * FROM app_public_announcements(${limit}::integer)`;
   return rows.map((r) => ({ slug: r.slug, name: r.name, city: r.city, text: r.announcement, until: r.announcement_until, logoAssetId: r.logo_asset_id }));
 }
+
+/**
+ * Suma una visita a la ficha pública. Es una función SQL `void`: se llama con $executeRaw
+ * ($queryRaw no puede leer columnas `void` y fallaba en silencio: ver docs/FASE5.md).
+ */
+export async function trackProfileView(slug: string): Promise<void> {
+  await prisma.$executeRaw`SELECT app_track_profile_view(${slug})`;
+}

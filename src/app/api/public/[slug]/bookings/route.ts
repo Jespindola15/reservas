@@ -10,6 +10,7 @@ import { trackingPath } from "@/modules/booking/public-access";
 import { publicTenantContext } from "@/modules/tenant/public";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { getEnv } from "@/lib/env";
+import { publicTransferInfo } from "@/modules/payments/public";
 
 /**
  * Si hay sesión de jugador, la reserva se asocia a su cuenta. Solo si la petición viene
@@ -59,10 +60,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         source: "ONLINE",
         playerUserId,
         origin: body.origin ?? "DIRECT",
+        transferPayerName: body.payerIsSelf ? null : (body.transferPayerName ?? null),
       },
       PUBLIC_ACTOR(ip === "unknown" ? null : ip),
     );
     // Respuesta mínima: no se devuelven ids internos de cliente ni datos de otros.
+    // Datos de cobro del complejo (solo si la reserva espera una transferencia).
+    const transfer = booking.paymentStatus === "AWAITING_TRANSFER" ? await publicTransferInfo(ctx) : null;
     return jsonOk(
       {
         code: booking.code,
@@ -76,6 +80,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         trackingUrl: trackingPath(slug, booking.code, booking.id),
         replayed,
         linkedToAccount: Boolean(playerUserId),
+        paymentStatus: booking.paymentStatus,
+        amountDue: booking.amountDue,
+        transfer,
       },
       replayed ? 200 : 201,
     );

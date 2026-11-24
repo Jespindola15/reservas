@@ -31,6 +31,12 @@ export const ERROR_CATALOG = {
   EMAIL_TAKEN: { status: 409, message: "Ya existe una cuenta con ese email. Iniciá sesión o recuperá tu contraseña." },
   BOOKING_OWNED: { status: 409, message: "Esa reserva ya está vinculada a otra cuenta." },
   REVIEW_NOT_ALLOWED: { status: 422, message: "Solo podés opinar sobre turnos que jugaste en los últimos 90 días, una vez por reserva." },
+  PAYMENTS_NOT_CONFIGURED: { status: 409, message: "Este complejo todavía no configuró sus datos de cobro. Contactalo para reservar." },
+  AMOUNT_UNAVAILABLE: { status: 409, message: "Este horario no tiene precio configurado: no se puede calcular el importe a transferir." },
+  HOLD_LIMIT: { status: 422, message: "Ya tenés reservas esperando transferencia. Informá o cancelá esas antes de pedir otra." },
+  TRANSFER_NOT_PENDING: { status: 409, message: "Esta reserva no está esperando una transferencia." },
+  TRANSFER_VERIFY_REQUIRED: { status: 409, message: "Esta reserva espera una transferencia: confirmala desde Transferencias, indicando el importe recibido." },
+  ALREADY_PROCESSED: { status: 409, message: "Esta operación ya fue procesada por otra persona. Actualizá la página." },
   RATE_LIMITED: { status: 429, message: "Demasiados intentos. Esperá un momento y volvé a probar." },
   INTERNAL: { status: 500, message: "Ocurrió un error inesperado. Intentá nuevamente." },
 } as const;

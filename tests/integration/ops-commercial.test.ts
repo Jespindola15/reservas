@@ -41,7 +41,7 @@ describe("endpoints internos", () => {
     expect(ok.status).toBe(200);
     const body = await ok.json();
     expect(body.ok).toBe(true);
-    expect(Object.keys(body.result)).toEqual(["expire", "schedule", "send", "cleanup"]);
+    expect(Object.keys(body.result)).toEqual(["expire", "reviewAlerts", "schedule", "send", "cleanup"]);
     expect(ok.headers.get("cache-control")).toBe("no-store");
   });
 

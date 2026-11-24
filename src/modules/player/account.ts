@@ -1,12 +1,10 @@
 import { hashPassword } from "better-auth/crypto";
-import sharp from "sharp";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withPlayer } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/http";
 import { parseOrThrow } from "@/lib/validation";
-import { sniffImageType } from "@/modules/courts/service";
 
 /**
  * Cuenta de JUGADOR. Es un usuario común (platformRole USER) sin membresías: no tiene
@@ -48,10 +46,10 @@ export async function getPlayerProfile(userId: string) {
   return withPlayer(userId, async (tx) => {
     const p = await tx.playerProfile.findUnique({
       where: { userId },
-      select: { phone: true, city: true, favoriteSports: true, notifyEmail: true, notifyReminders: true, avatarUpdatedAt: true },
+      select: { phone: true, city: true, favoriteSports: true, notifyEmail: true, notifyReminders: true },
     });
     // Usuarios creados antes de la Fase 4 (p. ej. dueños) no tienen perfil: se crea vacío al usarlo.
-    return p ?? { phone: null, city: null, favoriteSports: [] as string[], notifyEmail: true, notifyReminders: true, avatarUpdatedAt: null };
+    return p ?? { phone: null, city: null, favoriteSports: [] as string[], notifyEmail: true, notifyReminders: true };
   });
 }
 
@@ -68,29 +66,4 @@ export async function updatePlayerProfile(userId: string, input: z.input<typeof 
   const { name, ...data } = parseOrThrow(profileSchema, input);
   await prisma.user.update({ where: { id: userId }, data: { name } });
   await withPlayer(userId, (tx) => tx.playerProfile.upsert({ where: { userId }, create: { userId, ...data }, update: data }));
-}
-
-/** Foto de perfil opcional: se recorta a 256×256 WebP y se le quitan los metadatos. */
-export async function setPlayerAvatar(userId: string, bytes: Uint8Array | null) {
-  if (bytes === null) {
-    await withPlayer(userId, (tx) => tx.playerProfile.updateMany({ where: { userId }, data: { avatar: null, avatarUpdatedAt: null } }));
-    return;
-  }
-  if (bytes.length === 0 || bytes.length > 1_572_864 || !sniffImageType(bytes)) throw new AppError("IMAGE_INVALID");
-  let out: Buffer;
-  try {
-    out = await sharp(bytes, { limitInputPixels: 40_000_000, failOn: "error" }).rotate().resize({ width: 256, height: 256, fit: "cover", position: "attention" }).webp({ quality: 80 }).toBuffer();
-  } catch {
-    throw new AppError("IMAGE_INVALID");
-  }
-  const avatar = new Uint8Array(out);
-  await withPlayer(userId, (tx) =>
-    tx.playerProfile.upsert({ where: { userId }, create: { userId, avatar, avatarUpdatedAt: new Date() }, update: { avatar, avatarUpdatedAt: new Date() } }),
-  );
-}
-
-/** Solo el propio jugador puede leer su foto (RLS por app.player_id). */
-export async function getPlayerAvatar(userId: string) {
-  const p = await withPlayer(userId, (tx) => tx.playerProfile.findUnique({ where: { userId }, select: { avatar: true } }));
-  return p?.avatar ?? null;
 }

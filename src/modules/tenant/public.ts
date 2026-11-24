@@ -1,6 +1,7 @@
 import { resolveTenantSlug } from "@/modules/access/authorize";
 import { withTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
+import { loadTransferSettings, transferConfigured } from "@/modules/payments/transfers";
 
 /**
  * Contexto PÚBLICO de un complejo (visitante sin sesión). El tenant sale del
@@ -77,8 +78,11 @@ export async function getPublicTenantProfile(slug: string) {
       },
     });
     const minPrice = new Map(prices.map((p) => [p.courtId, p._min.amount]));
+    // Solo un booleano: los datos bancarios se muestran recién al crear la solicitud.
+    const transferReady = transferConfigured(tenant.depositType, await loadTransferSettings(tx, ctx.tenantId));
     return {
       tenant,
+      transferReady,
       courts: courts.map((c) => ({ ...c, fromPrice: minPrice.get(c.id) ?? null })),
       logoId: assets.find((a) => a.kind === "LOGO")?.id ?? null,
       coverId: assets.find((a) => a.kind === "COVER")?.id ?? null,

@@ -3,6 +3,7 @@ import { Brand } from "@/components/Brand";
 import { requireUserPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { authorizeTenantAccess, hasPermission } from "@/modules/access/authorize";
+import { panelBadges } from "@/modules/inbox/service";
 import { SignOutButton } from "../SignOutButton";
 import { MobileTabs, SidebarNav } from "./SidebarNav";
 import styles from "./shell.module.css";
@@ -24,6 +25,7 @@ export default async function PanelLayout({ children, params }: { children: Reac
   }
   const { tenant, role } = access;
   const canManage = hasPermission(role, "court.manage");
+  const badges = await panelBadges(access.ctx).catch(() => ({ unread: 0, transfers: 0 }));
 
   return (
     <div className={styles.shell}>
@@ -32,7 +34,7 @@ export default async function PanelLayout({ children, params }: { children: Reac
           <Brand href="/panel" />
           <details className={styles.mobileMenu}>
             <summary aria-label="Abrir menú">Menú</summary>
-            <SidebarNav slug={slug} canManage={canManage} />
+            <SidebarNav slug={slug} canManage={canManage} badges={badges} />
           </details>
         </div>
         <div className={styles.tenantBox}>
@@ -41,7 +43,7 @@ export default async function PanelLayout({ children, params }: { children: Reac
           <span className={styles.role}>{role === "OWNER" ? "Dueño" : role === "ADMIN" ? "Administrador" : "Personal"}</span>
         </div>
         <div className={styles.desktopNav}>
-          <SidebarNav slug={slug} canManage={canManage} />
+          <SidebarNav slug={slug} canManage={canManage} badges={badges} />
         </div>
         <div className={styles.sidebarFooter}>
           <span className={styles.userName}>{user.name}</span>

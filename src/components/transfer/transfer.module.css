@@ -1,0 +1,17 @@
+.panel { display: flex; flex-direction: column; gap: 0.75rem; }
+.copyRow {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.65rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+}
+.copyText { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.copyValue { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; word-break: break-all; font-size: 1rem; }
+.countdown {
+  display: flex; flex-direction: column; gap: 0.2rem; padding: 0.75rem 0.9rem; border-radius: 12px;
+  background: var(--surface-3); border: 1px solid var(--border);
+}
+.countValue { font-size: 1.6rem; font-variant-numeric: tabular-nums; color: var(--warning); }
+.countExpired { font-size: 1.3rem; color: var(--danger); }
+.dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.9rem; margin: 0; }
+.dl dt { color: var(--text-muted); }
+.dl dd { margin: 0; overflow-wrap: anywhere; }
+.instructions { white-space: pre-line; margin: 0; padding: 0.65rem 0.8rem; border-left: 3px solid var(--lime); background: var(--surface-2); border-radius: 0 10px 10px 0; }

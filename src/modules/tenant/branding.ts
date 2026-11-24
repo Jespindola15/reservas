@@ -61,15 +61,12 @@ export const brandingSchema = z.object({
   province: z.union([z.literal(""), z.enum(AR_PROVINCES)]).optional().transform((v) => v || null),
   latitude: z.union([z.literal(""), z.coerce.number().min(-90).max(90)]).optional().transform((v) => (v === "" || v === undefined ? null : v)),
   longitude: z.union([z.literal(""), z.coerce.number().min(-180).max(180)]).optional().transform((v) => (v === "" || v === undefined ? null : v)),
-  depositType: z.enum(["NONE", "PERCENT", "FIXED"]).default("NONE"),
-  /** PERCENT: 1–100. FIXED: pesos (se guarda en centavos). */
-  depositValue: z.coerce.number().min(0).max(1_000_000).default(0),
+  // El tipo y valor de la seña se configuran en "Datos de cobro" (solo el dueño, junto con los datos bancarios).
   depositNote: z.string().trim().max(300).optional().transform(blankToNull),
   announcement: z.string().trim().max(200).optional().transform((v) => (v && v.length >= 3 ? v : null)),
   announcementUntil: z.union([z.literal(""), z.iso.date()]).optional().transform((v) => (v ? new Date(`${v}T00:00:00Z`) : null)),
 }).transform((d) => ({
   ...d,
-  depositValue: d.depositType === "NONE" ? 0 : d.depositType === "PERCENT" ? Math.min(100, Math.round(d.depositValue)) : Math.round(d.depositValue * 100),
   announcementUntil: d.announcement ? d.announcementUntil : null,
   // Coordenadas: ambas o ninguna (igual que el CHECK de la base).
   latitude: d.latitude !== null && d.longitude !== null ? Math.round(d.latitude * 1e6) / 1e6 : null,

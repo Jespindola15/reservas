@@ -11,7 +11,8 @@ import { cachedCatalog } from "@/modules/marketplace/cached";
 import { getPlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
 import { listFavoriteTenantIds } from "@/modules/player/favorites";
 import { SignOutButton } from "../panel/SignOutButton";
-import { avatarAction, updateProfileAction } from "../cuenta/actions";
+import { updateProfileAction } from "../cuenta/actions";
+import { initials } from "@/components/player/initials";
 
 export const metadata: Metadata = { title: "Mi perfil — TURNUP" };
 
@@ -51,18 +52,8 @@ export default async function ProfilePage() {
       <section className={styles.section} aria-labelledby="datos">
         <div className={styles.sectionHead}><h2 id="datos">Mis datos</h2></div>
         <div className={ui.row} style={{ alignItems: "center", marginBottom: "0.8rem" }}>
-          {profile.avatarUpdatedAt ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/api/jugador/avatar?v=${profile.avatarUpdatedAt.getTime()}`} alt="Tu foto de perfil" width={64} height={64} style={{ borderRadius: "50%" }} />
-          ) : (
-            <span className={styles.avatar} style={{ width: 64, height: 64, fontSize: "1.6rem" }} aria-hidden>{user.name.slice(0, 1).toUpperCase()}</span>
-          )}
-          <ActionForm action={avatarAction} submitLabel="Subir foto" variant="secondary" small resetOnSuccess>
-            <label className={ui.field}><span className="sr-only">Foto de perfil (opcional)</span><input className={ui.input} type="file" name="avatar" accept="image/jpeg,image/png,image/webp" required /></label>
-          </ActionForm>
-          {profile.avatarUpdatedAt ? (
-            <ActionForm action={avatarAction} submitLabel="Quitar foto" variant="ghost" small quietSuccess><input type="hidden" name="remove" value="1" /></ActionForm>
-          ) : null}
+          <span className={styles.avatar} style={{ width: 56, height: 56, fontSize: "1.4rem" }} aria-hidden>{initials(user.name)}</span>
+          <span className={ui.faint}>Tu avatar usa tus iniciales. En TURNUP los jugadores no suben fotos personales.</span>
         </div>
         <ActionForm action={updateProfileAction} submitLabel="Guardar cambios" className={ui.stack}>
           <label className={ui.field}><span className={ui.label}>Nombre y apellido</span><input className={ui.input} name="name" required minLength={2} maxLength={80} defaultValue={user.name} /></label>

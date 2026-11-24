@@ -355,8 +355,6 @@ export async function updateBrandingAction(slug: string, _p: ActionResult, fd: F
         province: String(fd.get("province") ?? "") as "",
         latitude: String(fd.get("latitude") ?? ""),
         longitude: String(fd.get("longitude") ?? ""),
-        depositType: String(fd.get("depositType") ?? "NONE") as "NONE",
-        depositValue: String(fd.get("depositValue") ?? "0"),
         depositNote: String(fd.get("depositNote") ?? ""),
         announcement: String(fd.get("announcement") ?? ""),
         announcementUntil: String(fd.get("announcementUntil") ?? ""),

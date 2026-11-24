@@ -32,6 +32,16 @@ export const publicBookingRequestSchema = z.object({
   website: z.string().max(200).optional(),
   /** Desde dónde se reservó (estadística para el complejo; no da ningún privilegio). */
   origin: z.enum(["MARKETPLACE", "DIRECT"]).optional(),
+  /**
+   * ¿Transfiere desde una cuenta a su nombre? Si no, nombre y apellido del titular (obligatorio).
+   * NUNCA se acepta un importe desde el navegador: lo calcula el servidor.
+   */
+  payerIsSelf: z.boolean().default(true),
+  transferPayerName: z.string().trim().max(80).optional(),
+}).superRefine((v, ctx) => {
+  if (!v.payerIsSelf && (!v.transferPayerName || v.transferPayerName.length < 3)) {
+    ctx.addIssue({ code: "custom", path: ["transferPayerName"], message: "Ingresá nombre y apellido del titular de la cuenta." });
+  }
 });
 export type PublicBookingRequest = z.infer<typeof publicBookingRequestSchema>;
 

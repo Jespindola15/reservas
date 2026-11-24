@@ -100,6 +100,8 @@ export async function cleanup(now: Date = new Date()) {
  */
 export async function tick(now: Date = new Date()) {
   const expire = await runJob("expire_pending", () => expirePendingBookings());
+  // Aviso al complejo cuando a una transferencia informada le quedan ≤ 45 min de revisión.
+  const reviewAlerts = await runJob("transfer_review_alerts", () => withSystem((tx) => tx.$queryRaw<{ n: number }[]>`SELECT app_transfer_review_alerts(45) AS n`));
   const schedule = await runJob("schedule_notifications", () => scheduleTimedNotifications(now));
   const send = await runJob("send_notifications", () => processNotifications({ batchSize: 50 }));
   let clean: Awaited<ReturnType<typeof runJob>> | { ok: true; result: "not_due" } = { ok: true, result: "not_due" };
@@ -108,7 +110,7 @@ export async function tick(now: Date = new Date()) {
     clean = await runJob("cleanup", () => cleanup(now));
   }
   await runJob("tick", async () => ({ at: now.toISOString() }));
-  return { expire, schedule, send, cleanup: clean };
+  return { expire, reviewAlerts, schedule, send, cleanup: clean };
 }
 
 /** Datos para /api/health (sin datos personales). */

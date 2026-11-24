@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActionForm } from "@/components/ActionForm";
+import { TransferPanel, type TransferData } from "@/components/transfer/TransferPanel";
 import ui from "@/components/ui.module.css";
+import { bookingErrorMessage } from "./booking-errors";
+import { reportTransferAction } from "./reserva/[code]/actions";
 import styles from "./public.module.css";
 
 type Sport = "FOOTBALL_5" | "FOOTBALL_7" | "FOOTBALL_8" | "FOOTBALL_11" | "PADEL" | "OTHER";
@@ -10,19 +14,24 @@ type CourtInfo = {
   id: string; name: string; sport: Sport; description: string | null; capacity: number | null; durations: number[]; imageId: string | null;
   surface?: string | null; covered?: boolean | null; dimensions?: string | null; lighting?: boolean | null;
 };
-type Deposit = { type: "NONE" | "PERCENT" | "FIXED"; value: number; note: string | null };
+type Deposit = { type: "NONE" | "PERCENT" | "FIXED" | "FULL"; value: number; note: string | null };
 type Slot = { startsAt: string; endsAt: string; available: boolean; priceAmount: number | null };
 type CourtDay = { id: string; name: string; sport: Sport; slots: Slot[]; closedReason: string | null };
 type Day = { operatingDate: string; currency: string; courts: CourtDay[] };
 type Selection = { court: CourtDay; slot: Slot; idempotencyKey: string };
-type Result = { code: string; status: "PENDING" | "CONFIRMED"; startsAt: string; trackingUrl: string; expiresAt: string | null };
+type Result = {
+  code: string; status: "PENDING" | "CONFIRMED"; startsAt: string; trackingUrl: string; expiresAt: string | null;
+  paymentStatus?: "NOT_REQUIRED" | "AWAITING_TRANSFER"; amountDue?: number | null; currency: string; transfer?: TransferData | null;
+};
 
 const SPORT: Record<Sport, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otro" };
 const SURFACE: Record<string, string> = { SINTETICO: "Sintético", CESPED: "Césped natural", CEMENTO: "Cemento", PARQUET: "Parquet", POLVO_LADRILLO: "Polvo de ladrillo", OTRA: "Otra superficie" };
 
 /** Seña requerida para un precio (informativa: se abona al complejo, TURNUP no cobra online). */
 export function depositFor(price: number | null, d: Deposit | undefined): number | null {
-  if (!d || d.type === "NONE" || d.value <= 0 || price === null) return null;
+  if (!d || d.type === "NONE" || price === null) return null;
+  if (d.type === "FULL") return price;
+  if (d.value <= 0) return null;
   return d.type === "PERCENT" ? Math.round((price * d.value) / 100) : Math.min(d.value, price);
 }
 
@@ -50,6 +59,8 @@ export function BookingWidget(props: {
   currency?: string;
   deposit?: Deposit;
   origin?: "MARKETPLACE" | "DIRECT";
+  /** false si el complejo exige transferencia pero no cargó sus datos de cobro: no se aceptan reservas online. */
+  transferReady?: boolean;
   /** Jugador con sesión: se precargan sus datos y la reserva queda en "Mis turnos". */
   player?: { name: string; email: string } | null;
 }) {
@@ -68,6 +79,9 @@ export function BookingWidget(props: {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
+  const [payerIsSelf, setPayerIsSelf] = useState(true);
+  const needsTransfer = Boolean(props.deposit && props.deposit.type !== "NONE");
+  const blocked = needsTransfer && props.transferReady === false;
 
   const timeFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, hour: "2-digit", minute: "2-digit", hour12: false }), [props.timezone]);
   const dateFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, weekday: "long", day: "numeric", month: "long" }), [props.timezone]);
@@ -128,18 +142,17 @@ export function BookingWidget(props: {
           customer: { name: String(form.get("name") ?? ""), phone: String(form.get("phone") ?? ""), email: String(form.get("email") ?? "") },
           notes: String(form.get("notes") ?? "") || undefined,
           idempotencyKey: selection.idempotencyKey,
-          website: String(form.get("website") ?? "") || undefined,
+          website: String(form.get("hp_leave_blank") ?? "") || undefined,
           origin: props.origin ?? "DIRECT",
+          ...(needsTransfer ? { payerIsSelf, transferPayerName: payerIsSelf ? undefined : String(form.get("transferPayerName") ?? "") } : {}),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        setSubmitError(
-          json?.error?.code === "LIMIT_REACHED"
-            ? "Ya tenés varias reservas activas en este complejo. Para reservar más, comunicate con el complejo."
-            : (json?.error?.message ?? "No pudimos registrar la reserva."),
-        );
-        if (json?.error?.code === "SLOT_UNAVAILABLE") {
+      // Una respuesta que no es JSON (p. ej. un 502 de la plataforma) NO es un problema de conexión del jugador.
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok || !json) {
+        setSubmitError(bookingErrorMessage(res.status, json));
+        const code = (json as { error?: { code?: string } } | null)?.error?.code;
+        if (code === "SLOT_UNAVAILABLE" || code === "SLOT_IN_PAST") {
           setSelection(null);
           reload();
         }
@@ -157,15 +170,30 @@ export function BookingWidget(props: {
 
   if (result) {
     const link = `${window.location.origin}${result.trackingUrl}`;
+    const awaiting = result.paymentStatus === "AWAITING_TRANSFER" && result.transfer && result.amountDue;
+    const token = new URL(link).searchParams.get("t") ?? "";
     return (
       <section className={`${ui.card} ${styles.success}`} aria-live="polite">
-        <p className={ui.eyebrow}>{result.status === "CONFIRMED" ? "Reserva confirmada" : "Solicitud enviada"}</p>
-        <h2>{result.status === "CONFIRMED" ? "¡Listo, nos vemos en la cancha!" : "Recibimos tu solicitud"}</h2>
-        <p>Código de seguimiento <strong className={styles.code}>{result.code}</strong></p>
+        <p className={ui.eyebrow}>{result.status === "CONFIRMED" ? "Reserva confirmada" : awaiting ? "Pendiente de transferencia" : "Solicitud enviada"}</p>
+        <h2>{result.status === "CONFIRMED" ? "¡Listo, nos vemos en la cancha!" : awaiting ? "Reservamos el horario por unos minutos" : "Recibimos tu solicitud"}</h2>
+        <p>Código de reserva <strong className={styles.code}>{result.code}</strong></p>
         <p className={ui.muted}>
           {dateFmt.format(new Date(result.startsAt))}, {timeFmt.format(new Date(result.startsAt))} hs.
-          {result.status === "PENDING" && result.expiresAt ? ` El complejo debe aprobarla antes de las ${timeFmt.format(new Date(result.expiresAt))}; si no, el turno se libera.` : ""}
+          {result.status === "PENDING" && result.expiresAt && !awaiting ? ` El complejo debe aprobarla antes de las ${timeFmt.format(new Date(result.expiresAt))}; si no, el turno se libera.` : ""}
         </p>
+        {awaiting ? (
+          <div className={ui.stack}>
+            <TransferPanel transfer={result.transfer!} amountDue={result.amountDue!} currency={result.currency} code={result.code}
+              deadline={result.expiresAt} reported={false} timezone={props.timezone} />
+            <ActionForm action={reportTransferAction.bind(null, props.slug, result.code, token)} submitLabel="Ya realicé la transferencia" className={ui.stack}
+              confirm={{ title: "¿Ya transferiste?", body: "Avisaremos al complejo para que verifique el pago. Informalo solo si la transferencia ya fue enviada.", confirmLabel: "Sí, ya transferí" }}>
+              <label className={ui.field}>
+                <span className={ui.label}>Número de operación (opcional)</span>
+                <input className={ui.input} name="reference" maxLength={40} autoComplete="off" />
+              </label>
+            </ActionForm>
+          </div>
+        ) : null}
         <div className={styles.linkBox}>
           <span className={ui.label}>Tu enlace privado para consultar o cancelar</span>
           <code className={styles.linkText}>{link}</code>
@@ -349,28 +377,50 @@ export function BookingWidget(props: {
             <div className={ui.grid2}>
               <label className={ui.field}>
                 <span className={ui.label}>Teléfono</span>
-                <input className={ui.input} id="phone" name="phone" type="tel" required minLength={6} maxLength={30} autoComplete="tel" />
+                <input className={ui.input} id="phone" name="phone" type="tel" required minLength={6} maxLength={30} autoComplete="tel" pattern="[0-9+()\s.\-]{6,30}" title="Solo números, espacios, +, - o paréntesis" inputMode="tel" />
               </label>
               <label className={ui.field}>
                 <span className={ui.label}>Email</span>
                 <input className={ui.input} id="email" name="email" type="email" required maxLength={254} autoComplete="email" defaultValue={props.player?.email ?? ""} />
-                {/* Campo trampa: invisible para personas y lectores de pantalla; los bots lo completan. */}
-                <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, opacity: 0 }} />
+                {/* Campo trampa: invisible para personas y lectores de pantalla; los bots lo completan.
+                    Nombre sin significado para que el autocompletado del navegador NO lo llene (antes se llamaba "website"). */}
+                <input name="hp_leave_blank" tabIndex={-1} autoComplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, opacity: 0 }} />
               </label>
             </div>
             <label className={ui.field}>
               <span className={ui.label}>Comentarios (opcional)</span>
               <textarea className={ui.textarea} id="notes" name="notes" maxLength={500} />
             </label>
+            {needsTransfer ? (
+              <fieldset className={ui.stackSm} style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend className={ui.label}>¿La transferencia se realizará desde una cuenta a tu nombre?</legend>
+                <div className={ui.row}>
+                  <label className={ui.row}><input type="radio" name="payerIsSelf" checked={payerIsSelf} onChange={() => setPayerIsSelf(true)} /> Sí</label>
+                  <label className={ui.row}><input type="radio" name="payerIsSelf" checked={!payerIsSelf} onChange={() => setPayerIsSelf(false)} /> No</label>
+                </div>
+                {!payerIsSelf ? (
+                  <label className={ui.field}>
+                    <span className={ui.label}>Nombre del titular de la cuenta que transfiere</span>
+                    <input className={ui.input} name="transferPayerName" required minLength={3} maxLength={80} autoComplete="off" />
+                    <span className={ui.faint}>Así el complejo puede identificar tu pago.</span>
+                  </label>
+                ) : null}
+              </fieldset>
+            ) : null}
             {submitError ? <p role="alert" className={`${ui.alert} ${ui.alertError}`}>{submitError}</p> : null}
             <div className={ui.row}>
-              <button className={ui.button} type="submit" disabled={submitting}>
+              <button className={ui.button} type="submit" disabled={submitting || blocked}>
                 {submitting ? <span className={ui.spinner} aria-hidden /> : null}
-                {submitting ? "Enviando…" : props.requiresApproval ? "Solicitar reserva" : "Confirmar reserva"}
+                {submitting ? "Enviando…" : needsTransfer ? "Reservar y ver datos para transferir" : props.requiresApproval ? "Solicitar reserva" : "Confirmar reserva"}
               </button>
               <button type="button" className={`${ui.button} ${ui.buttonSecondary}`} onClick={() => setSelection(null)}>Cambiar horario</button>
             </div>
-            <p className={ui.faint}>No se realiza ningún pago online: {props.deposit && props.deposit.type !== "NONE" ? "la seña y el saldo se abonan" : "el importe se abona"} al complejo.</p>
+            {blocked ? <p className={`${ui.alert} ${ui.alertWarn}`}>Este complejo todavía no configuró sus datos de cobro, así que no está tomando reservas online. Comunicate con el complejo.</p> : null}
+            <p className={ui.faint}>
+              {needsTransfer
+                ? "TURNUP no cobra: transferís directo a la cuenta del complejo y el complejo verifica el pago."
+                : "No se realiza ningún pago online: el importe se abona al complejo."}
+            </p>
             {props.player ? <p className={ui.faint}>La reserva quedará en <Link href="/mis-turnos">Mis turnos</Link>.</p> : <p className={ui.faint}>¿Querés ver tus reservas en un solo lugar? <Link href="/cuenta/registro">Creá tu cuenta de jugador</Link> (opcional).</p>}
           </form>
         </section>

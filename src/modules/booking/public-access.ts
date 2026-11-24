@@ -3,6 +3,8 @@ import { audit, type Actor } from "@/lib/audit";
 import { withTenant } from "@/lib/db/tenant-context";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
+import { publicTransferInfo } from "@/modules/payments/public";
+import { reportTransferInTx } from "@/modules/payments/transfers";
 import { publicTenantContext } from "@/modules/tenant/public";
 import { enqueueBookingEvent } from "@/modules/notifications/outbox";
 import { mapDbError } from "./service";
@@ -58,6 +60,9 @@ async function loadByCode(slug: string, code: string, token: string) {
         customerName: true,
         expiresAt: true,
         version: true,
+        paymentStatus: true,
+        amountDue: true,
+        transferReportedAt: true,
         court: { select: { name: true, sport: true } },
         tenant: { select: { name: true, timezone: true, contactPhone: true, address: true, publicCancellationMinutes: true } },
       },
@@ -70,7 +75,7 @@ async function loadByCode(slug: string, code: string, token: string) {
 export type PublicBookingView = Awaited<ReturnType<typeof getPublicBooking>>;
 
 export async function getPublicBooking(slug: string, code: string, token: string, now: Date = new Date()) {
-  const { booking: b } = await loadByCode(slug, code, token);
+  const { ctx, booking: b } = await loadByCode(slug, code, token);
   const expired = b.status === "EXPIRED" || (b.status === "PENDING" && b.expiresAt !== null && b.expiresAt <= now);
   const deadline = new Date(b.startsAt.getTime() - b.tenant.publicCancellationMinutes * 60_000);
   const active = !expired && (b.status === "PENDING" || b.status === "CONFIRMED");
@@ -88,7 +93,18 @@ export async function getPublicBooking(slug: string, code: string, token: string
     expiresAt: b.status === "PENDING" ? b.expiresAt : null,
     cancellationDeadline: deadline,
     canCancel: active && now < deadline,
+    paymentStatus: b.paymentStatus,
+    amountDue: b.amountDue,
+    transferReportedAt: b.transferReportedAt,
+    // Datos para transferir: solo mientras la reserva espera la transferencia o su revisión.
+    transfer: !expired && b.status === "PENDING" && (b.paymentStatus === "AWAITING_TRANSFER" || b.paymentStatus === "TRANSFER_REPORTED") ? await publicTransferInfo(ctx) : null,
   };
+}
+
+/** El jugador (invitado o con cuenta) informa su transferencia con el enlace privado. */
+export async function reportTransferByLink(slug: string, code: string, token: string, reference: string | null, actor: Actor, now: Date = new Date()) {
+  const { ctx, booking } = await loadByCode(slug, code, token);
+  return withTenant(ctx, (tx) => reportTransferInTx(tx, ctx.tenantId, booking.id, reference, actor, now));
 }
 
 /** Cancelación por el jugador con su enlace privado, dentro del plazo del complejo. */

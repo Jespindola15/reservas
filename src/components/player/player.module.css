@@ -72,3 +72,6 @@
 .turnActions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.3rem; }
 .stars { display: inline-flex; gap: 0.15rem; }
 .tabs { display: flex; gap: 0.4rem; margin: 0.8rem 0; }
+.bell { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; color: var(--text-muted); }
+.bell:hover { background: var(--surface-2); color: var(--text); }
+.bellCount { position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--warning); color: #111; font-size: 0.68rem; font-weight: 800; display: grid; place-items: center; }
