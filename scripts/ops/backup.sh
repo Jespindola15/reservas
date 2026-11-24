@@ -7,6 +7,9 @@
 # - La URL se lee de una variable de entorno; nunca se imprime.
 # - Retención: BACKUP_KEEP_DAYS (por defecto 14). Copiá además los archivos fuera del servidor
 #   (bucket con versionado/inmutabilidad). Ver docs/INFRAESTRUCTURA.md.
+# - Cifrado: si definís BACKUP_AGE_RECIPIENT (clave pública "age1..."), el respaldo se cifra con
+#   age y el archivo sin cifrar se borra. La clave PRIVADA no está en el servidor ni en el repo:
+#   solo la necesita quien restaura.
 set -euo pipefail
 : "${BACKUP_DATABASE_URL:?Definí BACKUP_DATABASE_URL}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
@@ -19,5 +22,11 @@ pg_dump --dbname="$BACKUP_DATABASE_URL" --format=custom --compress=9 --no-owner 
 mv "$out.partial" "$out"
 sha256sum "$out" > "$out.sha256"
 pg_restore --list "$out" > /dev/null   # verifica que el archivo sea legible
+if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
+  age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" --output "$out.age" "$out"
+  sha256sum "$out.age" > "$out.age.sha256"
+  rm -f "$out" "$out.sha256"
+  out="$out.age"
+fi
 find "$BACKUP_DIR" -name 'turnup-*.dump*' -type f -mtime +"$KEEP_DAYS" -delete
 echo "{\"backup\":\"$(basename "$out")\",\"bytes\":$(stat -c %s "$out")}"

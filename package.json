@@ -23,6 +23,7 @@
     "images:migrate": "tsx scripts/migrate-images-to-object.ts",
     "icons": "node scripts/generate-icons.mjs",
     "admin:superadmin": "tsx scripts/ops/create-superadmin.ts",
+    "demo:seed": "tsx scripts/ops/seed-demo.ts",
     "db:migrate:prod": "bash scripts/ops/migrate-prod.sh",
     "db:verify": "node scripts/ops/verify-db.mjs"
   },

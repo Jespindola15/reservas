@@ -93,3 +93,26 @@ export async function assignSubscriptionAction(_p: ActionResult, fd: FormData) {
     return res.warnings.length ? `Plan asignado. Atención: el complejo ${res.warnings.join(" y ")}; no podrá crear más hasta ajustarse.` : "Plan asignado.";
   });
 }
+
+export async function recordSubscriptionPaymentAction(_p: ActionResult, fd: FormData) {
+  return runAction("platform.subscriptionPayment", async () => {
+    const user = await requireSuperadmin();
+    const { recordSubscriptionPayment } = await import("@/modules/platform/billing");
+    const res = await recordSubscriptionPayment(user, {
+      tenantId: String(fd.get("tenantId") ?? ""),
+      amount: String(fd.get("amount") ?? ""),
+      method: String(fd.get("method") ?? "TRANSFER") as "TRANSFER",
+      paidAt: String(fd.get("paidAt") ?? ""),
+      periodStart: String(fd.get("periodStart") ?? ""),
+      periodEnd: String(fd.get("periodEnd") ?? ""),
+      note: String(fd.get("note") ?? ""),
+      extend: fd.get("extend") === "on",
+    });
+    revalidatePath("/admin");
+    return res.extendedTo
+      ? `Pago registrado. Suscripción activa hasta el ${res.extendedTo.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}.`
+      : res.subscriptionId
+        ? "Pago registrado."
+        : "Pago registrado (el complejo no tiene una suscripción vigente: asignale un plan).";
+  });
+}

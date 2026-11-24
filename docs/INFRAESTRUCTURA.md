@@ -80,6 +80,39 @@ Si se hace al revés (push primero), las páginas que usan columnas nuevas falla
 - Verificado localmente: backup de `reservas_dev` (94 KB) → restauración en `turnup_restore_test_…` →
   `tenants=3, bookings=0, migrations=7` → base de prueba eliminada.
 
+### 5.1 Respaldo externo cifrado (Fase 3.1)
+
+- `.github/workflows/backup.yml`: **una vez por semana** (lunes 04:17 AR) hace `pg_dump` con un rol de
+  **solo lectura**, lo **cifra con age** (clave pública) y lo guarda como artefacto privado de GitHub
+  Actions por 30 días (fuera de Neon). Sin los secretos `BACKUP_DATABASE_URL` y `BACKUP_AGE_RECIPIENT`
+  el job se saltea. Despierta la base unos segundos por semana (no la mantiene activa).
+- La **clave privada** age la guarda solo el dueño (gestor de contraseñas o pendrive), nunca en el repo.
+- Restauración de prueba aislada: `BACKUP_AGE_IDENTITY=clave.txt RESTORE_ADMIN_URL=... scripts/ops/restore-test.sh turnup-XXXX.dump.age`
+  (descifra a un temporal, restaura en `turnup_restore_test_<fecha>` y cuenta filas). Verificado localmente
+  en la Fase 3.1: respaldo cifrado de 118 KB → restauración → `tenants=3, migrations=9` → base de prueba eliminada.
+
+### 5.2 Cuándo pasar a planes pagos (umbrales de aviso)
+
+| Recurso (plan gratuito) | Límite | Avisar / pasar a pago cuando… | Dónde mirarlo |
+|---|---|---|---|
+| Neon: almacenamiento | 0,5 GB por proyecto | supere **350 MB (70 %)** | Superadmin → Estado del sistema (lo calcula solo) |
+| Neon: cómputo | 100 CU-h/mes | supere **70 CU-h** a mitad de mes de forma sostenida | Consola de Neon → Usage |
+| Netlify: funciones / ancho de banda | según el plan de la cuenta (compartido entre todos tus sitios) | aparezca el aviso de 75 % de Netlify | Netlify → Usage |
+| Emails (Resend gratis) | 3.000/mes, 100/día | se acerque a 80/día | Panel de Resend |
+| Fotos en la base | (parte de los 0,5 GB) | las imágenes pasen de ~150 MB | `SELECT pg_size_pretty(sum(size_bytes)) FROM court_images` + `tenant_assets` |
+
+Primer paso recomendado cuando haga falta: **Neon Launch** (pago por uso) y mover imágenes a R2 (sección 7).
+Ningún cambio de plan se hace sin autorización del dueño.
+
+### 5.3 Entorno de demostración (separado de producción)
+
+- `npm run demo:seed` crea **"Club Demo TURNUP (ficticio)"** (`/demo-turnup`) con ~300 reservas, pagos y
+  clientes ficticios (`@example.com`, teléfonos `11 0000-xxxx`) usando la lógica real de la app.
+- Barreras: exige `TURNUP_DEMO_ENV=1` y **se niega** si la base tiene cualquier complejo que no empiece con
+  `demo-` o cualquier usuario que no sea `@example.com` (o sea, nunca corre sobre producción).
+- Despliegue sugerido sin costo: rama `demo` de Neon + *branch deploy* `demo` de Netlify con su propia
+  `DATABASE_URL`. Verificado localmente sobre una base descartable (334 reservas) y con las dos barreras.
+
 ## 6. Retención de datos (definida en `RETENTION`, `src/modules/jobs/runner.ts`)
 
 | Dato | Se borra |

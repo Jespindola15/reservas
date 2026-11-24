@@ -1,0 +1,60 @@
+# Respaldo semanal CIFRADO de la base de producción, guardado fuera de Neon
+# (artefacto privado de GitHub Actions, 30 días), con prueba de restauración aislada.
+#
+# Requiere dos secretos del repositorio (Settings → Secrets and variables → Actions):
+#   BACKUP_DATABASE_URL   URL de un rol de SOLO LECTURA (nunca el dueño ni el de la app).
+#   BACKUP_AGE_RECIPIENT  Clave PÚBLICA age ("age1..."). La privada la guarda el dueño, fuera del repo.
+# Sin esos secretos el job se saltea (no falla). Corre 1 vez por semana: despierta la base
+# unos segundos, no la mantiene activa. Uso de Actions: ~2 minutos por semana.
+name: Respaldo cifrado
+
+on:
+  schedule:
+    - cron: "17 7 * * 1" # lunes 04:17 (Argentina)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+    steps:
+      - name: Verificar secretos
+        id: check
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$BACKUP_AGE_RECIPIENT" ]; then
+            echo "Faltan BACKUP_DATABASE_URL o BACKUP_AGE_RECIPIENT: se omite el respaldo." >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.skip != 'true'
+      - name: Instalar cliente PostgreSQL 17 y age
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq postgresql-client-17 age >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Respaldo (pg_dump + cifrado age)
+        if: steps.check.outputs.skip != 'true'
+        run: BACKUP_DIR=backups bash scripts/ops/backup.sh
+      - name: Prueba de restauración aislada (estructura)
+        if: steps.check.outputs.skip != 'true'
+        # Sin la clave privada no se puede descifrar aquí (a propósito): se verifica la integridad
+        # del archivo cifrado. La restauración completa se prueba con scripts/ops/restore-test.sh.
+        run: cd backups && sha256sum --check --quiet ./*.age.sha256 && echo "Integridad OK" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.skip != 'true'
+        with:
+          name: turnup-backup-${{ github.run_id }}
+          path: backups/
+          retention-days: 30
+          if-no-files-found: error

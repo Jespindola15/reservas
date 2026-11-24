@@ -28,7 +28,7 @@ export async function activePlanLimits(tx: Tx, tenantId: string): Promise<PlanLi
   return { planName: sub?.plan.name ?? null, maxCourts: sub?.plan.maxCourts ?? null, maxMembers: sub?.plan.maxMembers ?? null };
 }
 
-function assertSuperadmin(user: AuthUser): Actor {
+export function assertSuperadmin(user: AuthUser): Actor {
   if (user.platformRole !== "SUPERADMIN") throw new AppError("FORBIDDEN");
   return { type: "PLATFORM_ADMIN", userId: user.id };
 }

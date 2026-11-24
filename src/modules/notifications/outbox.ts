@@ -11,7 +11,7 @@ export const PLAYER_KINDS = [
   "booking_expired",
 ] as const;
 export const OWNER_KINDS = ["owner_new_request", "owner_booking_cancelled", "owner_digest"] as const;
-export const ACCOUNT_KINDS = ["password_reset", "team_invitation"] as const;
+export const ACCOUNT_KINDS = ["password_reset", "team_invitation", "tenant_welcome"] as const;
 export type NotificationKind = (typeof PLAYER_KINDS)[number] | (typeof OWNER_KINDS)[number] | (typeof ACCOUNT_KINDS)[number];
 
 /**

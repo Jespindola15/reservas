@@ -526,3 +526,19 @@ test("puesta en marcha: aviso en el inicio, pasos con avance y enlace + QR al fi
   await expect(page.getByAltText(/Código QR de/)).toBeVisible();
   await expect(page.getByText(/\/padel-centro$/).first()).toBeVisible();
 });
+
+test("superadmin: métricas comerciales, estado del sistema y pago de suscripción registrado a mano", async ({ page }) => {
+  await loginSuperadmin(page);
+  await page.goto("/admin");
+  await expect(page.getByText("MRR registrado")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Estado del sistema" })).toBeVisible();
+  await expect(page.getByText(/MB del plan gratuito/)).toBeVisible();
+  const form = page.getByRole("region", { name: "Registrar pago de suscripción" });
+  await form.getByLabel("Complejo").selectOption({ label: "Pádel Centro" });
+  await form.getByLabel("Importe ($)").fill("25000");
+  await form.getByLabel("Período desde").fill("2099-01-01");
+  await form.getByLabel("Período hasta").fill("2099-01-31");
+  await form.getByRole("button", { name: "Registrar pago" }).click();
+  await expect(page.getByText(/Pago registrado\. Suscripción activa hasta el/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Últimos pagos registrados" })).toContainText("Pádel Centro");
+});

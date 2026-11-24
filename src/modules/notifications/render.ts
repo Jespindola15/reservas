@@ -69,6 +69,23 @@ export async function renderNotification(tx: Tx, n: RenderInput, now: Date): Pro
     };
   }
 
+  if (n.kind === "tenant_welcome") {
+    if (!n.tenantId) return { send: false, reason: "no_tenant" };
+    const t = await tx.tenant.findUnique({ where: { id: n.tenantId }, select: { name: true, slug: true, status: true, onboardingCompletedAt: true } });
+    if (!t || t.status !== "ACTIVE") return { send: false, reason: "tenant_inactive" };
+    return {
+      send: true,
+      content: layout({
+        preheader: `${t.name} ya está en TURNUP`,
+        title: `¡Bienvenido a TURNUP, ${t.name}!`,
+        intro: "Tu complejo ya tiene panel y página de reservas. En unos minutos podés dejarlo listo: datos, canchas, horarios, precios y reglas, paso a paso.",
+        cta: { label: t.onboardingCompletedAt ? "Ir a mi panel" : "Empezar la puesta en marcha", url: `${appUrl()}/panel/${t.slug}${t.onboardingCompletedAt ? "" : "/bienvenida"}` },
+        note: `Tu página pública para compartir con tus clientes: ${appUrl()}/${t.slug}`,
+        footer: "TURNUP · Recibís este email porque te dieron de alta como responsable de un complejo.",
+      }),
+    };
+  }
+
   if (!n.tenantId) return { send: false, reason: "no_tenant" };
   const tenant = await tx.tenant.findUnique({
     where: { id: n.tenantId },

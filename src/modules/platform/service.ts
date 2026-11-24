@@ -5,6 +5,7 @@ import { audit, type Actor } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db/errors";
 import { withPlatformAdmin } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
+import { enqueue } from "@/modules/notifications/outbox";
 import { parseOrThrow } from "@/lib/validation";
 import { isValidTimeZone } from "@/modules/booking/time";
 import type { AuthUser } from "@/modules/access/authorize";
@@ -108,6 +109,10 @@ export async function assignTenantAdmin(user: AuthUser, input: z.input<typeof as
       entityId: membership.id,
       metadata: { targetUserId: target.id, role: membership.role, userCreated: created },
     });
+    // Bienvenida al dueño (una sola vez por complejo y persona; idempotente por clave).
+    if (membership.role === "OWNER") {
+      await enqueue(tx, { tenantId: tenant.id, kind: "tenant_welcome", recipient: data.email, dedupeKey: `welcome:${tenant.id}:${target.id}` });
+    }
     return { userId: target.id, membershipId: membership.id, created };
   });
 }

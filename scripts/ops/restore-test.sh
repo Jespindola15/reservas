@@ -7,8 +7,15 @@
 # continuar si el nombre no termina así. Nunca restaura sobre producción.
 set -euo pipefail
 : "${RESTORE_ADMIN_URL:?Definí RESTORE_ADMIN_URL (servidor de PRUEBA)}"
-dump="${1:?Indicá el archivo .dump}"
-[ -f "$dump.sha256" ] && sha256sum --check --quiet "$dump.sha256"
+dump="${1:?Indicá el archivo .dump (o .dump.age)}"
+[ -f "$dump.sha256" ] && (cd "$(dirname "$dump")" && sha256sum --check --quiet "$(basename "$dump").sha256")
+if [[ "$dump" == *.age ]]; then
+  : "${BACKUP_AGE_IDENTITY:?Definí BACKUP_AGE_IDENTITY (archivo con la clave privada age) para descifrar}"
+  plain="$(mktemp --suffix=.dump)"
+  trap 'rm -f "$plain"' EXIT
+  age --decrypt --identity "$BACKUP_AGE_IDENTITY" --output "$plain" "$dump"
+  dump="$plain"
+fi
 db="turnup_restore_test_$(date -u +%Y%m%d%H%M%S)"
 case "$db" in turnup_restore_test_*) ;; *) echo "Nombre de base inesperado" >&2; exit 1 ;; esac
 psql "$RESTORE_ADMIN_URL" -v ON_ERROR_STOP=1 -qc "CREATE DATABASE \"$db\""
