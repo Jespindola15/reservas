@@ -7,7 +7,7 @@ import { requireTenantPage } from "@/lib/auth/page";
 import { formatMoney } from "@/modules/booking/pricing";
 import { minutesToHHMM } from "@/modules/booking/time";
 import { listCourtsAdmin, SPORT_LABEL } from "@/modules/courts/service";
-import { createCourtAction } from "../config-actions";
+import { createCourtAction, moveCourtAction } from "../config-actions";
 import { CourtFields } from "./CourtFields";
 import styles from "./courts.module.css";
 
@@ -32,11 +32,12 @@ export default async function CourtsPage({ params }: { params: Promise<{ slug: s
       {courts.length === 0 ? <p className={ui.empty}>Todavía no cargaste canchas. Creá la primera abajo.</p> : null}
 
       <div className={styles.grid}>
-        {courts.map((c) => {
+        {courts.map((c, idx) => {
           const days = new Set(c.scheduleRules.map((r) => r.weekday));
           const first = c.scheduleRules[0];
           return (
-            <Link key={c.id} href={`/panel/${slug}/canchas/${c.id}`} className={styles.courtCard}>
+            <div key={c.id} className={styles.courtWrap}>
+            <Link href={`/panel/${slug}/canchas/${c.id}`} className={styles.courtCard}>
               <div className={styles.thumb}>
                 {c.images[0] ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -66,6 +67,14 @@ export default async function CourtsPage({ params }: { params: Promise<{ slug: s
                 </span>
               </div>
             </Link>
+            {courts.length > 1 ? (
+              <div className={styles.orderBar} aria-label={`Orden de ${c.name}`}>
+                <span className={ui.faint}>Orden en la página pública</span>
+                <ActionForm action={moveCourtAction.bind(null, slug, c.id, "up")} submitLabel="↑" ariaLabel={`Subir ${c.name}`} variant="ghost" small quietSuccess disabled={idx === 0} />
+                <ActionForm action={moveCourtAction.bind(null, slug, c.id, "down")} submitLabel="↓" ariaLabel={`Bajar ${c.name}`} variant="ghost" small quietSuccess disabled={idx === courts.length - 1} />
+              </div>
+            ) : null}
+            </div>
           );
         })}
       </div>

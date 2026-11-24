@@ -57,6 +57,21 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
             {num("publicCancellationMinutes", "Cancelación online hasta (min antes)", 0, 10080, "Después de ese límite, el jugador debe llamar al complejo.")}
           </div>
         </section>
+        <section className={ui.card}>
+          <div className={ui.cardHeader}><h2>Notificaciones por email</h2></div>
+          <div className={ui.stackSm} style={{ marginBottom: "0.9rem" }}>
+            <label className={ui.checkbox}><input type="checkbox" name="notificationsEnabled" defaultChecked={s.notificationsEnabled} />Enviar notificaciones de este complejo</label>
+            <label className={ui.checkbox}><input type="checkbox" name="notifyPlayers" defaultChecked={s.notifyPlayers} />A los jugadores: solicitud recibida, confirmación, cambios, cancelación y recordatorio</label>
+            <label className={ui.checkbox}><input type="checkbox" name="notifyOwner" defaultChecked={s.notifyOwner} />Al complejo: nuevas reservas y cancelaciones online</label>
+            <label className={ui.checkbox}><input type="checkbox" name="digestEnabled" defaultChecked={s.digestEnabled} />Resumen diario con los turnos de las próximas 24 h</label>
+          </div>
+          <div className={ui.grid2}>
+            <label className={ui.field}><span className={ui.label}>Email que recibe los avisos</span><input className={ui.input} type="email" name="ownerNotificationEmail" maxLength={254} defaultValue={s.ownerNotificationEmail ?? ""} placeholder={s.contactEmail ?? ""} /><span className={ui.hint}>Si lo dejás vacío se usa el email de contacto.</span></label>
+            {num("reminderHoursBefore", "Recordatorio al jugador (horas antes)", 0, 48, "0 desactiva el recordatorio.")}
+            {num("digestHour", "Hora del resumen diario (0–23)", 0, 23, `Hora local (${s.timezone}).`)}
+          </div>
+          <p className={ui.hint} style={{ marginTop: "0.75rem" }}>Los emails se envían solo si el servidor tiene un proveedor configurado. Un turno cancelado o reprogramado nunca recibe un recordatorio viejo.</p>
+        </section>
       </ActionForm>
     </>
   );

@@ -8,6 +8,7 @@ import { listBookings, type BookingFilters } from "@/modules/booking/admin-queri
 import { formatMoney } from "@/modules/booking/pricing";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
 import { listCourtsAdmin } from "@/modules/courts/service";
+import { hasPermission } from "@/modules/access/authorize";
 import { STATUS_LABEL } from "../labels";
 
 export const metadata: Metadata = { title: "Reservas" };
@@ -48,7 +49,18 @@ export default async function BookingsPage({ params, searchParams }: { params: P
           <p className={ui.eyebrow}>Gestión</p>
           <h1>Reservas</h1>
         </div>
-        <Link href={`/panel/${slug}/calendario?nueva=1`} className={ui.button}>+ Reserva manual</Link>
+        <div className={ui.row}>
+          {hasPermission(access.role, "data.export") ? (
+            <a
+              className={`${ui.button} ${ui.buttonSecondary}`}
+              href={`/panel/${slug}/exportar?${new URLSearchParams(Object.entries({ tipo: "reservas", status: sp.status, courtId: sp.court, from: sp.from, to: sp.to }).filter(([, v]) => v) as [string, string][]).toString()}`}
+              download
+            >
+              Exportar CSV
+            </a>
+          ) : null}
+          <Link href={`/panel/${slug}/calendario?nueva=1`} className={ui.button}>+ Reserva manual</Link>
+        </div>
       </header>
 
       <form className={`${ui.card} ${ui.grid2}`} style={{ marginBottom: "1rem", alignItems: "end" }} aria-label="Filtros">

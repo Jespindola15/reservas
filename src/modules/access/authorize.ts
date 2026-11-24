@@ -18,6 +18,8 @@ export const PERMISSIONS = {
   "block.manage": ["OWNER", "ADMIN"],
   "court.manage": ["OWNER", "ADMIN"],
   "tenant.settings": ["OWNER", "ADMIN"],
+  "team.manage": ["OWNER", "ADMIN"],
+  "data.export": ["OWNER", "ADMIN"],
 } as const satisfies Record<string, readonly MembershipRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -57,10 +59,11 @@ export async function authorizeTenantAccess(
   const membership = await withUser(user.id, (tx) =>
     tx.membership.findUnique({
       where: { tenantId_userId: { tenantId: resolved.id, userId: user.id } },
-      select: { role: true },
+      select: { role: true, isActive: true },
     }),
   );
-  if (!membership) throw new AppError("FORBIDDEN");
+  // Acceso desactivado por el complejo => sin permisos (la membresía se conserva por historial).
+  if (!membership || !membership.isActive) throw new AppError("FORBIDDEN");
   const allowed: readonly MembershipRole[] = PERMISSIONS[permission];
   if (!allowed.includes(membership.role)) throw new AppError("FORBIDDEN");
 
@@ -82,7 +85,7 @@ export function hasPermission(role: MembershipRole, permission: Permission): boo
 export async function listMyTenants(userId: string) {
   const rows = await withUser(userId, (tx) =>
     tx.membership.findMany({
-      where: { userId },
+      where: { userId, isActive: true },
       select: { role: true, tenant: { select: { slug: true, name: true, status: true } } },
       orderBy: { createdAt: "asc" },
     }),

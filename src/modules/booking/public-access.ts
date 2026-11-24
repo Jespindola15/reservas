@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/db/tenant-context";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { publicTenantContext } from "@/modules/tenant/public";
+import { enqueueBookingEvent } from "@/modules/notifications/outbox";
 import { mapDbError } from "./service";
 
 /**
@@ -106,6 +107,7 @@ export async function cancelBookingPublic(slug: string, code: string, token: str
       });
       if (res.count !== 1) throw new AppError("BOOKING_CLOSED");
       await audit(tx, { tenantId: ctx.tenantId, actor, action: "booking.public_cancelled", entityType: "booking", entityId: b.id, metadata: { from: b.status } });
+      await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "cancelled", by: "player" });
     });
   } catch (e) {
     throw mapDbError(e);

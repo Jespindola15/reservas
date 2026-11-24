@@ -47,3 +47,23 @@
   }
   .main { padding-top: 1.25rem; }
 }
+
+/* Barra inferior (solo celular) */
+.mobileTabs { display: none; }
+@media (max-width: 960px) {
+  .main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+  .mobileTabs {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+    background: rgb(5 7 13 / 96%); border-top: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+  }
+  .tab, .tabActive {
+    display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+    padding: 0.35rem 0; border-radius: 10px; font-size: 0.7rem; font-weight: 700;
+    color: var(--text-muted); text-decoration: none; min-height: 48px; justify-content: center;
+  }
+  .tabActive { color: var(--lime); background: rgb(200 244 59 / 8%); }
+  .tab:focus-visible, .tabActive:focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; }
+}

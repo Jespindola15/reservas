@@ -33,10 +33,33 @@ const schema = z
     /** Programador interno de vencimientos (en el proceso del servidor). */
     EXPIRATION_SCHEDULER: z.enum(["internal", "off"]).default("internal"),
     EXPIRATION_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
+    /**
+     * Proveedor de email. Por defecto: memory en test (nunca envía), log en
+     * desarrollo, disabled en producción hasta que se configure Resend.
+     */
+    EMAIL_PROVIDER: z.enum(["resend", "log", "memory", "disabled"]).optional(),
+    RESEND_API_KEY: z.string().optional(),
+    /** Remitente verificado en Resend, p. ej. "TURNUP <avisos@tudominio.com>". */
+    EMAIL_FROM: z.string().max(200).default("TURNUP <no-reply@turnup.invalid>"),
+    /** Webhook (Slack/Discord compatible) para alertas críticas. Opcional. */
+    ALERT_WEBHOOK_URL: z.union([z.literal(""), z.url()]).default(""),
+    /** Almacenamiento de imágenes: database (actual) u object (S3/R2). */
+    IMAGE_STORAGE: z.enum(["database", "object"]).default("database"),
+    S3_ENDPOINT: z.string().default(""),
+    S3_BUCKET: z.string().default(""),
+    S3_REGION: z.string().default("auto"),
+    S3_ACCESS_KEY_ID: z.string().default(""),
+    S3_SECRET_ACCESS_KEY: z.string().default(""),
     /** Solo para probar el build de producción en la máquina local (http://localhost). */
     ALLOW_INSECURE_LOCALHOST: z.enum(["true", "false"]).default("false"),
   })
   .superRefine((env, ctx) => {
+    if (env.EMAIL_PROVIDER === "resend" && !env.RESEND_API_KEY) {
+      ctx.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "Requerida con EMAIL_PROVIDER=resend" });
+    }
+    if (env.IMAGE_STORAGE === "object" && !(env.S3_ENDPOINT && env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY)) {
+      ctx.addIssue({ code: "custom", path: ["S3_ENDPOINT"], message: "IMAGE_STORAGE=object requiere S3_ENDPOINT, S3_BUCKET y credenciales" });
+    }
     if (env.NODE_ENV !== "production") return;
     // Durante `next build` no se exigen los controles de producción: se aplican al arrancar el servidor.
     if (process.env.NEXT_PHASE === "phase-production-build") return;
@@ -87,3 +110,9 @@ export function getEnv(): Env {
 }
 
 export const isProduction = () => getEnv().NODE_ENV === "production";
+
+export function emailProviderName(): "resend" | "log" | "memory" | "disabled" {
+  const env = getEnv();
+  if (env.EMAIL_PROVIDER) return env.EMAIL_PROVIDER;
+  return env.NODE_ENV === "test" ? "memory" : env.NODE_ENV === "production" ? "disabled" : "log";
+}

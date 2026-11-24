@@ -29,3 +29,6 @@
 .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.6rem; }
 .imageItem { display: flex; flex-direction: column; gap: 0.4rem; }
 .imageItem img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
+.courtWrap { display: flex; flex-direction: column; gap: 0.35rem; }
+.orderBar { display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem; font-size: 0.78rem; }
+.orderBar > span { margin-right: auto; }

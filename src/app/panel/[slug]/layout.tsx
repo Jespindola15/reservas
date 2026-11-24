@@ -4,7 +4,7 @@ import { requireUserPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { authorizeTenantAccess, hasPermission } from "@/modules/access/authorize";
 import { SignOutButton } from "../SignOutButton";
-import { SidebarNav } from "./SidebarNav";
+import { MobileTabs, SidebarNav } from "./SidebarNav";
 import styles from "./shell.module.css";
 
 /**
@@ -49,6 +49,7 @@ export default async function PanelLayout({ children, params }: { children: Reac
         </div>
       </aside>
       <main className={styles.main}>{children}</main>
+      <MobileTabs slug={slug} />
     </div>
   );
 }

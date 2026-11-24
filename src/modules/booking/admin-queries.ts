@@ -172,3 +172,45 @@ export async function getCalendar(ctx: TenantContext, timezone: string, q: { dat
     return { courts, bookings, blocks, dates, windows };
   });
 }
+
+/**
+ * Resumen mensual para la vista "Mes": cantidad de reservas activas por día local y estado,
+ * más los días cerrados para todo el complejo. Agrupado en PostgreSQL (una sola consulta).
+ */
+export async function getMonthSummary(ctx: TenantContext, timezone: string, month: string, courtId?: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new AppError("VALIDATION_ERROR");
+  if (courtId) parseOrThrow(z.uuid(), courtId);
+  const start = localMidnight(`${month}-01`, timezone);
+  if (!start) throw new AppError("VALIDATION_ERROR");
+  const end = start.plus({ months: 1 });
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.$queryRaw<{ d: string; status: string; n: bigint }[]>`
+      SELECT to_char((starts_at AT TIME ZONE ${timezone})::date, 'YYYY-MM-DD') AS d, status::text AS status, count(*) AS n
+      FROM bookings
+      WHERE tenant_id = ${ctx.tenantId}::uuid
+        AND starts_at >= ${start.toJSDate()} AND starts_at < ${end.toJSDate()}
+        AND status IN ('PENDING', 'CONFIRMED', 'COMPLETED', 'NO_SHOW')
+        AND (${courtId ?? null}::uuid IS NULL OR court_id = ${courtId ?? null}::uuid)
+      GROUP BY 1, 2`;
+    const closed = await tx.scheduleException.findMany({
+      where: { tenantId: ctx.tenantId, courtId: null, kind: "CLOSED", date: { gte: stringToDbDate(`${month}-01`), lt: stringToDbDate(end.toISODate()!) } },
+      select: { date: true, reason: true },
+    });
+    const days = new Map<string, { confirmed: number; pending: number; total: number }>();
+    for (const r of rows) {
+      const cur = days.get(r.d) ?? { confirmed: 0, pending: 0, total: 0 };
+      const n = Number(r.n);
+      if (r.status === "PENDING") cur.pending += n;
+      else cur.confirmed += n;
+      cur.total += n;
+      days.set(r.d, cur);
+    }
+    return {
+      month,
+      firstDay: start.toISODate()!,
+      daysInMonth: start.daysInMonth ?? 30,
+      days: Object.fromEntries(days),
+      closed: Object.fromEntries(closed.map((c) => [dbDateToString(c.date), c.reason ?? "Cerrado"])),
+    };
+  });
+}

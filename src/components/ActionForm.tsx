@@ -24,6 +24,9 @@ export function ActionForm(props: {
   resetOnSuccess?: boolean;
   /** Clave de idempotencia inicial (generada en el servidor); se renueva tras cada envío exitoso. */
   idempotencyKey?: string;
+  /** Etiqueta accesible del botón cuando el texto visible es un ícono (p. ej. "↑"). */
+  ariaLabel?: string;
+  disabled?: boolean;
   children?: React.ReactNode;
 }) {
   const [state, formAction, pending] = useActionState(props.action, null);
@@ -65,7 +68,7 @@ export function ActionForm(props: {
     >
       {props.idempotencyKey ? <input type="hidden" name="idempotencyKey" value={idemKey} /> : null}
       {props.children}
-      <button type="submit" disabled={pending} className={`${ui.button} ${variant} ${props.small ? ui.buttonSmall : ""}`}>
+      <button type="submit" disabled={pending || props.disabled} aria-label={props.ariaLabel} className={`${ui.button} ${variant} ${props.small ? ui.buttonSmall : ""}`}>
         {pending ? <span className={ui.spinner} aria-hidden /> : null}
         {pending ? (props.pendingLabel ?? "Guardando…") : props.submitLabel}
       </button>

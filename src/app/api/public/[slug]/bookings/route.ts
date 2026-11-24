@@ -1,5 +1,5 @@
 import { PUBLIC_ACTOR } from "@/lib/audit";
-import { enforceRateLimit, jsonError, jsonOk, readJson } from "@/lib/http";
+import { enforceIpRateLimit, jsonError, jsonOk, readJson } from "@/lib/http";
 import { getClientIp } from "@/lib/security/client-ip";
 import { parseOrThrow } from "@/lib/validation";
 import { publicBookingRequestSchema } from "@/modules/booking/schemas";
@@ -20,8 +20,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   try {
     const { slug } = await params;
     const ip = getClientIp(req.headers);
-    await enforceRateLimit(`book:ip:${ip}`, { window: 600, max: 20 });
-    await enforceRateLimit(`book:ip:${ip}:t:${slug}`, { window: 600, max: 8 });
+    await enforceIpRateLimit(ip, "book", { window: 600, max: 20 });
+    await enforceIpRateLimit(ip, `book:t:${slug}`, { window: 600, max: 8 });
 
     const body = parseOrThrow(publicBookingRequestSchema, await readJson(req));
     const ctx = await publicTenantContext(slug);

@@ -6,6 +6,9 @@ import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db/prisma";
 import { getEnv } from "@/lib/env";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
+import { seal } from "@/lib/security/sealed";
+import { withSystem } from "@/lib/db/tenant-context";
+import { enqueue } from "@/modules/notifications/outbox";
 import { logger } from "@/lib/logger";
 
 
@@ -28,6 +31,10 @@ import { logger } from "@/lib/logger";
  *    no se puede evadir falsificando X-Forwarded-For.
  *  - Usuarios deshabilitados no pueden crear sesión.
  */
+function hasClientIp(req: Request, header: string): boolean {
+  return Boolean(header && req.headers.get(header));
+}
+
 function createAuth() {
   const env = getEnv();
   const isProd = env.NODE_ENV === "production";
@@ -42,6 +49,19 @@ function createAuth() {
     disableSignUp: true,
     minPasswordLength: 12,
     maxPasswordLength: 128,
+    // Recuperación: token de un solo uso (Better Auth lo borra al usarse), 1 hora,
+    // y se cierran todas las sesiones al cambiar la contraseña.
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, token }) => {
+      // El enlace apunta a nuestra pantalla; viaja CIFRADO por la cola y se borra al enviarse.
+      const url = `${env.BETTER_AUTH_URL.replace(/\/$/, "")}/restablecer?token=${encodeURIComponent(token)}`;
+      const sealedUrl = await seal(url);
+      await withSystem((tx) =>
+        enqueue(tx, { tenantId: null, kind: "password_reset", recipient: user.email, dedupeKey: `password_reset:${createHash("sha256").update(token).digest("hex").slice(0, 32)}`, payload: { sealedUrl } }),
+      );
+      logger.info("auth.password_reset_requested", { userId: user.id });
+    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 días
@@ -52,7 +72,11 @@ function createAuth() {
     window: 60,
     max: 60,
     customRules: {
-      "/sign-in/email": { window: 15 * 60, max: 5 },
+      // Sin la cabecera de IP del proxy no se aplica el límite POR IP (evita que
+      // una mala configuración bloquee el login de todos); siguen los límites por cuenta.
+      "/sign-in/email": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
+      "/request-password-reset": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
+      "/reset-password": { window: 15 * 60, max: 10 },
     },
     customStorage: {
       consume: (key, rule) => consumeRateLimit(`auth:${key}`, rule),
@@ -60,12 +84,13 @@ function createAuth() {
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/sign-in/email") return;
+      if (ctx.path !== "/sign-in/email" && ctx.path !== "/request-password-reset") return;
       const email = typeof ctx.body?.email === "string" ? ctx.body.email.trim().toLowerCase().slice(0, 254) : "";
       if (!email) return;
       // Se guarda un hash, no el email en claro.
       const emailKey = createHash("sha256").update(email).digest("hex").slice(0, 32);
-      const res = await consumeRateLimit(`auth:account:${emailKey}`, { window: 15 * 60, max: 10 });
+      const rule = ctx.path === "/sign-in/email" ? { window: 15 * 60, max: 10 } : { window: 60 * 60, max: 3 };
+      const res = await consumeRateLimit(`auth:${ctx.path === "/sign-in/email" ? "account" : "reset"}:${emailKey}`, rule);
       if (!res.allowed) {
         logger.warn("auth.account_rate_limited", { retryAfter: res.retryAfter });
         throw new APIError("TOO_MANY_REQUESTS", { message: "Demasiados intentos. Probá más tarde." });

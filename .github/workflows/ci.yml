@@ -1,0 +1,82 @@
+# CI de TURNUP: solo verifica (tipos, lint, pruebas, build). NO despliega ni toca producción:
+# el despliegue sigue siendo el automático de Netlify desde la rama principal.
+# Usa una base PostgreSQL efímera del propio runner con contraseñas de prueba.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      # Credenciales SOLO de prueba (base efímera del runner), iguales a playwright.config.ts.
+      OWNER_PW: dev_owner_pw
+      APP_PW: dev_app_pw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Preparar roles y bases de prueba
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -v owner_pw="'$OWNER_PW'" -v app_pw="'$APP_PW'" -f db/bootstrap.sql
+          for db in reservas_dev reservas_test reservas_e2e reservas_shadow; do
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db OWNER reservas_owner"
+          done
+          cat > .env <<ENV
+          NODE_ENV=development
+          DATABASE_URL=postgresql://reservas_app:$APP_PW@localhost:5432/reservas_dev
+          MIGRATION_DATABASE_URL=postgresql://reservas_owner:$OWNER_PW@localhost:5432/reservas_dev
+          BETTER_AUTH_SECRET=ci-only-secret-not-used-anywhere-else-0123456789
+          BETTER_AUTH_URL=http://localhost:3000
+          ENV
+          cat > .env.test <<ENV
+          NODE_ENV=test
+          DATABASE_URL=postgresql://reservas_app:$APP_PW@localhost:5432/reservas_test
+          MIGRATION_DATABASE_URL=postgresql://reservas_owner:$OWNER_PW@localhost:5432/reservas_test
+          BETTER_AUTH_SECRET=ci-only-test-secret-0123456789abcdef0123
+          BETTER_AUTH_URL=http://localhost:3100
+          TRUST_PROXY_HOPS=0
+          DB_POOL_MAX=20
+          ENV
+
+      - run: npm ci
+      - name: Migraciones + deriva del esquema
+        run: |
+          npx prisma migrate deploy
+          npm run db:drift
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - name: Build de producción + E2E
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results
+          retention-days: 7

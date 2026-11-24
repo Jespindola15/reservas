@@ -3,6 +3,7 @@ import { audit, type Actor } from "@/lib/audit";
 import { isExclusionViolation, isRaised, isUniqueViolation } from "@/lib/db/errors";
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
+import { enqueueBookingEvent } from "@/modules/notifications/outbox";
 import { customerContactKey, fingerprint, generateBookingCode } from "./code";
 import { resolvePrice } from "./pricing";
 import { dbDateToString, findSlot, stringToDbDate, type ScheduleExceptionInput, type Slot } from "./time";
@@ -318,6 +319,8 @@ export async function createBooking(
             expiresAt: expiresAt?.toISOString() ?? null,
           },
         });
+        // Outbox: los avisos existen solo si esta transacción confirma.
+        await enqueueBookingEvent(tx, ctx.tenantId, booking.id, { type: "created" });
 
         return { booking: toSummary(booking), replayed: false };
       });
@@ -430,6 +433,9 @@ export async function changeBookingStatus(
       entityId: current.id,
       metadata: { from: current.status, to: input.to, reason: input.reason ?? null },
     });
+    if (input.to === "CONFIRMED") await enqueueBookingEvent(tx, ctx.tenantId, current.id, { type: "confirmed" });
+    if (input.to === "CANCELLED") await enqueueBookingEvent(tx, ctx.tenantId, current.id, { type: "cancelled", by: "complex", reason: input.reason });
+    if (input.to === "REJECTED") await enqueueBookingEvent(tx, ctx.tenantId, current.id, { type: "rejected", reason: input.reason });
 
     const updated = await tx.booking.findFirstOrThrow({
       where: { id: current.id, tenantId: ctx.tenantId },
@@ -500,6 +506,12 @@ export async function rescheduleBooking(
           from: { courtId: current.courtId, startsAt: current.startsAt.toISOString(), duration: current.durationMinutes },
           to: { courtId: court.id, startsAt: slot.startsAt.toISOString(), duration: input.durationMinutes },
         },
+      });
+      const fromCourt = await tx.court.findFirst({ where: { id: current.courtId, tenantId: ctx.tenantId }, select: { name: true } });
+      await enqueueBookingEvent(tx, ctx.tenantId, current.id, {
+        type: "rescheduled",
+        fromStartsAt: current.startsAt.toISOString(),
+        fromCourtName: fromCourt?.name ?? "",
       });
 
       const updated = await tx.booking.findFirstOrThrow({

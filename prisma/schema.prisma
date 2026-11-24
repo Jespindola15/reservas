@@ -76,6 +76,19 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum NotificationStatus {
+  PENDING // en cola (o esperando reintento)
+  SENDING // tomada por un worker
+  SENT
+  FAILED // agotó reintentos o error permanente
+  SKIPPED // ya no corresponde (p. ej. la reserva cambió o el complejo desactivó avisos)
+}
+
+enum ImageStorage {
+  DATABASE
+  OBJECT
+}
+
 enum ActorType {
   USER
   PLATFORM_ADMIN
@@ -181,6 +194,17 @@ model Tenant {
   pendingExpirationMinutes Int         @default(30) @map("pending_expiration_minutes")
   /// Hasta cuántos minutos antes del inicio el jugador puede cancelar con su enlace.
   publicCancellationMinutes Int        @default(120) @map("public_cancellation_minutes")
+  /// Interruptor general de emails del complejo.
+  notificationsEnabled    Boolean      @default(true) @map("notifications_enabled")
+  notifyPlayers           Boolean      @default(true) @map("notify_players")
+  notifyOwner             Boolean      @default(true) @map("notify_owner")
+  /// Destino de los avisos al complejo (si es null se usa contactEmail).
+  ownerNotificationEmail  String?      @map("owner_notification_email")
+  /// Horas antes del turno para el recordatorio (0 = sin recordatorio).
+  reminderHoursBefore     Int          @default(3) @map("reminder_hours_before")
+  digestEnabled           Boolean      @default(false) @map("digest_enabled")
+  /// Hora local (0-23) del resumen diario de próximas reservas.
+  digestHour              Int          @default(8) @map("digest_hour")
   contactPhone            String?      @map("contact_phone")
   contactEmail            String?      @map("contact_email")
   address                 String?
@@ -198,6 +222,8 @@ model Tenant {
   subscriptions Subscription[]
   exceptions    ScheduleException[]
   courtImages   CourtImage[]
+  invitations   Invitation[]
+  notifications Notification[]
   auditLogs     AuditLog[]
 
   @@map("tenants")
@@ -208,7 +234,10 @@ model Membership {
   tenantId  String         @map("tenant_id") @db.Uuid
   userId    String         @map("user_id") @db.Uuid
   role      MembershipRole
+  /// Acceso desactivado sin borrar historial (auditoría, reservas creadas por la persona).
+  isActive  Boolean        @default(true) @map("is_active")
   createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -225,6 +254,9 @@ model Plan {
   priceAmount Int      @map("price_amount")
   currency    String   @default("ARS") @db.Char(3)
   maxCourts   Int?     @map("max_courts")
+  /// Máximo de miembros del equipo (sin contar dueños). Null = sin límite.
+  maxMembers  Int?     @map("max_members")
+  description String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -425,7 +457,13 @@ model CourtImage {
   tenantId    String   @map("tenant_id") @db.Uuid
   courtId     String   @map("court_id") @db.Uuid
   contentType String   @map("content_type")
-  data        Bytes
+  storage     ImageStorage @default(DATABASE)
+  /// Bytes en la base (storage = DATABASE). Null si está en almacenamiento de objetos.
+  data        Bytes?
+  /// Clave en el bucket S3/R2 (storage = OBJECT).
+  objectKey   String?  @map("object_key")
+  width       Int?
+  height      Int?
   sizeBytes   Int      @map("size_bytes")
   sortOrder   Int      @default(0) @map("sort_order")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -478,6 +516,78 @@ model CourtAllocation {
 
   @@index([tenantId, startsAt])
   @@map("court_allocations")
+}
+
+// -----------------------------------------------------------------------------
+// Equipo: invitaciones
+// -----------------------------------------------------------------------------
+
+/// Invitación de un empleado. El token se guarda HASHEADO (SHA-256); es de un solo uso.
+model Invitation {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  email           String
+  role            MembershipRole
+  tokenHash       String         @unique @map("token_hash")
+  expiresAt       DateTime       @map("expires_at") @db.Timestamptz(3)
+  acceptedAt      DateTime?      @map("accepted_at") @db.Timestamptz(3)
+  revokedAt       DateTime?      @map("revoked_at") @db.Timestamptz(3)
+  invitedByUserId String?        @map("invited_by_user_id") @db.Uuid
+  acceptedUserId  String?        @map("accepted_user_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("invitations")
+}
+
+// -----------------------------------------------------------------------------
+// Notificaciones (patrón outbox) y operación
+// -----------------------------------------------------------------------------
+
+/// Cola persistente de emails. Se inserta en la MISMA transacción que el evento
+/// (si la reserva no se confirma, el aviso no existe). El contenido se arma al
+/// enviar a partir de la base: no se guardan enlaces privados ni HTML con datos.
+model Notification {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String?            @map("tenant_id") @db.Uuid
+  kind              String
+  recipient         String
+  /// Evita duplicados: el mismo evento nunca genera dos avisos.
+  dedupeKey         String             @unique @map("dedupe_key")
+  bookingId         String?            @map("booking_id") @db.Uuid
+  /// Datos mínimos del evento (sin tokens ni datos sensibles).
+  payload           Json?
+  status            NotificationStatus @default(PENDING)
+  attempts          Int                @default(0)
+  nextAttemptAt     DateTime           @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  lockedAt          DateTime?          @map("locked_at") @db.Timestamptz(3)
+  lastError         String?            @map("last_error")
+  providerMessageId String?            @map("provider_message_id")
+  sentAt            DateTime?          @map("sent_at") @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
+}
+
+/// Última ejecución de cada tarea programada (monitoreo y detección de fallas).
+model JobRun {
+  name                String    @id
+  lastStartedAt       DateTime? @map("last_started_at") @db.Timestamptz(3)
+  lastFinishedAt      DateTime? @map("last_finished_at") @db.Timestamptz(3)
+  lastSuccessAt       DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastStatus          String?   @map("last_status")
+  lastError           String?   @map("last_error")
+  lastResult          Json?     @map("last_result")
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+
+  @@map("job_runs")
 }
 
 // -----------------------------------------------------------------------------

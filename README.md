@@ -7,12 +7,17 @@ Plataforma SaaS multiempresa. Cada complejo tiene:
 - **Panel** (`/panel/padel-centro`): inicio con indicadores, calendario diario/semanal por cancha, reservas
   (filtros, detalle, confirmar, cancelar, reprogramar, notas internas, historial), clientes, canchas y tarifas,
   feriados/días especiales/bloqueos y ajustes.
-- **Superadministrador** (`/admin`): complejos, administradores, suspensión y métricas.
+- **Equipo** (`/panel/<slug>/equipo`): invitaciones por email, roles, desactivación de accesos.
+- **Superadministrador** (`/admin`): complejos, administradores, suspensión, métricas, **planes y límites**
+  (`/admin/planes`) y **visor de auditoría** con filtros (`/admin/auditoria`).
+- **Emails automáticos** (cola persistente/outbox) para jugadores y dueños; **recuperación de contraseña**.
+- **PWA instalable** (Android/iPhone) sin caché de datos privados ni de disponibilidad.
 
 **Stack:** Next.js 16 (App Router) · TypeScript estricto · PostgreSQL 16 · Prisma 7 (adapter `pg`) · Better Auth ·
 Zod 4 · Luxon · CSS Modules · Vitest · Playwright.
 
 Documentación: [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) · [`docs/FASE2.md`](docs/FASE2.md) ·
+[`docs/FASE3.md`](docs/FASE3.md) · [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md) ·
 [`docs/PENDIENTES_Y_RIESGOS.md`](docs/PENDIENTES_Y_RIESGOS.md).
 
 > **No está listo para producción** sin una revisión de seguridad externa y los pendientes de
@@ -52,17 +57,21 @@ Usuarios del seed: `superadmin@example.com`, `duenio@padel-centro.example.com`,
 > Los nombres técnicos (bases `reservas_*`, roles `reservas_owner`/`reservas_app`, prefijo de cookies) se
 > mantienen a propósito: cambiarlos rompería instalaciones existentes o cerraría todas las sesiones.
 
-## Vencimiento automático de solicitudes
+## Tareas programadas (vencimientos, emails, limpieza)
 
-Las solicitudes online `PENDING` vencen a los N minutos (Ajustes, 5 min a 24 h) y liberan el turno.
-Tres formas de ejecutar el job (pueden convivir: es idempotente y seguro ante ejecuciones simultáneas):
+Una sola tarea, `POST /api/internal/jobs/tick` (`Authorization: Bearer $CRON_SECRET`), hace en orden:
+vencer solicitudes `PENDING` atrasadas → programar recordatorios y resúmenes → enviar la cola de emails →
+limpieza horaria (rate limits, sesiones y tokens vencidos, invitaciones cerradas, emails viejos). Cada paso es
+idempotente y seguro ante ejecuciones simultáneas (`FOR UPDATE SKIP LOCKED`, locks de PostgreSQL).
 
-1. **Programador interno** (por defecto): corre dentro del servidor cada `EXPIRATION_INTERVAL_SECONDS`.
-2. **Cron externo por HTTP**: `POST /api/internal/jobs/expire-pending` con `Authorization: Bearer $CRON_SECRET`.
-3. **Cron del sistema**: `npm run job:expire`.
+**Un solo scheduler** según el hosting:
 
-Además, cada reserva nueva vence en el momento las pendientes atrasadas, y la base de datos impide confirmar una
-vencida aunque el job no haya corrido.
+- **Netlify (actual)**: la función programada `netlify/functions/expire-pending.mts` llama al tick cada minuto.
+  El temporizador interno se apaga solo en serverless.
+- **Servidor persistente** (`next start` en un VPS): `EXPIRATION_SCHEDULER=internal` (por defecto), o un cron
+  del sistema con `npm run job:expire`.
+
+Estado: `GET /api/health` (público: `{status}`; con el secreto: base de datos, jobs, cola de emails, avisos).
 
 ## Verificación
 
@@ -100,6 +109,10 @@ Supabase, Railway, etc.) y estas variables en *Site configuration → Environmen
 | `AUTH_CLIENT_IP_HEADER` | `x-nf-client-connection-ip` (cabecera que pone Netlify) |
 | `CRON_SECRET` | ≥ 32 caracteres (lo usa la función programada de vencimientos) |
 | `EXPIRATION_SCHEDULER` | `off` (en serverless el temporizador en memoria no sirve; vence la función programada) |
+| `EMAIL_PROVIDER` | vacío = emails desactivados. `resend` solo después de verificar el dominio en Resend |
+| `RESEND_API_KEY`, `EMAIL_FROM` | solo si `EMAIL_PROVIDER=resend` |
+| `ALERT_WEBHOOK_URL` | opcional: webhook que recibe fallas repetidas de jobs |
+| `IMAGE_STORAGE`, `S3_*` | opcional: `object` + credenciales de R2/S3 (por defecto `database`) |
 
 Preparar la base **una vez, desde tu máquina** (no desde Netlify):
 
@@ -110,7 +123,9 @@ MIGRATION_DATABASE_URL="postgresql://reservas_owner:...@HOST/DB?sslmode=require"
 ```
 
 - `netlify.toml` fija Node 22 y `npm run build`.
-- `netlify/functions/expire-pending.mts` es una función programada que cada minuto dispara el job de vencimiento.
+- `netlify/functions/expire-pending.mts` es una función programada que cada minuto dispara el tick.
+- **Las migraciones NO corren en el build.** Después de cada deploy que agregue migraciones hay que ejecutar
+  `prisma migrate deploy` contra la base de producción (son aditivas; ver docs/INFRAESTRUCTURA.md).
 - Si el proveedor no permite crear roles (`CREATE ROLE`) o la extensión `btree_gist`, no sirve: la app depende de
   ambos para el aislamiento (RLS) y la protección antisolapamiento.
 

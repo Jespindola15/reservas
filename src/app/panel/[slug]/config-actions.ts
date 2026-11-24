@@ -124,9 +124,10 @@ export async function saveWeeklyScheduleAction(slug: string, courtId: string, _p
       const { listCourtsAdmin } = await import("@/modules/courts/service");
       targets = (await listCourtsAdmin(ctx)).map((c) => c.id);
     }
-    await replaceWeeklySchedule(ctx, targets, days, actorOf(user.id));
+    const { conflicts } = await replaceWeeklySchedule(ctx, targets, days, actorOf(user.id));
     revalidatePath(`/panel/${slug}/canchas`, "layout");
-    return targets.length > 1 ? `Horario aplicado a ${targets.length} canchas.` : "Horario guardado.";
+    const base = targets.length > 1 ? `Horario aplicado a ${targets.length} canchas.` : "Horario guardado.";
+    return base + conflictNote(conflicts);
   });
 }
 
@@ -202,7 +203,7 @@ export async function createExceptionAction(slug: string, _p: ActionResult, fd: 
     const kind = fd.get("kind") === "SPECIAL_HOURS" ? "SPECIAL_HOURS" : "CLOSED";
     const hours = kind === "SPECIAL_HOURS" ? range(hhmm(fd.get("from")), hhmm(fd.get("to"))) : null;
     const courtId = String(fd.get("courtId") ?? "");
-    await createScheduleException(
+    const created = await createScheduleException(
       ctx,
       {
         courtId: courtId || null,
@@ -215,7 +216,7 @@ export async function createExceptionAction(slug: string, _p: ActionResult, fd: 
       actorOf(user.id),
     );
     revalidatePath(`/panel/${slug}/horarios`);
-    return kind === "CLOSED" ? "Cierre registrado. Ese día no se ofrecen turnos." : "Horario especial registrado.";
+    return (kind === "CLOSED" ? "Cierre registrado. Ese día no se ofrecen turnos." : "Horario especial registrado.") + conflictNote(created.conflicts);
   });
 }
 
@@ -247,10 +248,81 @@ export async function updateSettingsAction(slug: string, _p: ActionResult, fd: F
         maxAdvanceDays: num("maxAdvanceDays"),
         pendingExpirationMinutes: num("pendingExpirationMinutes"),
         publicCancellationMinutes: num("publicCancellationMinutes"),
+        notificationsEnabled: fd.get("notificationsEnabled") === "on",
+        notifyPlayers: fd.get("notifyPlayers") === "on",
+        notifyOwner: fd.get("notifyOwner") === "on",
+        ownerNotificationEmail: String(fd.get("ownerNotificationEmail") ?? ""),
+        reminderHoursBefore: num("reminderHoursBefore"),
+        digestEnabled: fd.get("digestEnabled") === "on",
+        digestHour: num("digestHour"),
       },
       actorOf(user.id),
     );
     revalidatePath(`/panel/${slug}`, "layout");
     return "Ajustes guardados.";
   });
+}
+
+// ---------------------------------------------------------------------- Equipo
+
+export async function inviteMemberAction(slug: string, _p: ActionResult, fd: FormData) {
+  return runAction("team.invite", async () => {
+    const { ctx, user, role } = await requireTenant(slug, "team.manage");
+    const { inviteMember } = await import("@/modules/team/service");
+    await inviteMember(ctx, role, { email: String(fd.get("email") ?? ""), role: String(fd.get("role") ?? "STAFF") as "STAFF" }, actorOf(user.id));
+    revalidatePath(`/panel/${slug}/equipo`);
+    return "Invitación enviada. Vence en 7 días.";
+  });
+}
+
+export async function revokeInvitationAction(slug: string, invitationId: string, _p: ActionResult, _fd: FormData) {
+  return runAction("team.revoke", async () => {
+    const { ctx, user, role } = await requireTenant(slug, "team.manage");
+    const { revokeInvitation } = await import("@/modules/team/service");
+    await revokeInvitation(ctx, role, invitationId, actorOf(user.id));
+    revalidatePath(`/panel/${slug}/equipo`);
+    return "Invitación revocada.";
+  });
+}
+
+export async function updateMemberAction(slug: string, membershipId: string, _p: ActionResult, fd: FormData) {
+  return runAction("team.update", async () => {
+    const { ctx, user, role } = await requireTenant(slug, "team.manage");
+    const { updateMember } = await import("@/modules/team/service");
+    const newRole = fd.get("role") ? (String(fd.get("role")) as "ADMIN" | "STAFF") : undefined;
+    if (newRole && newRole !== "ADMIN" && newRole !== "STAFF") throw new AppError("VALIDATION_ERROR");
+    const active = fd.get("isActive");
+    await updateMember(ctx, role, { membershipId, role: newRole, isActive: active === null ? undefined : active === "true" }, actorOf(user.id));
+    revalidatePath(`/panel/${slug}/equipo`);
+    return "Permisos actualizados.";
+  });
+}
+
+// ---------------------------------------------------------------------- Orden
+
+export async function moveCourtAction(slug: string, courtId: string, direction: "up" | "down", _p: ActionResult, _fd: FormData) {
+  return runAction("court.move", async () => {
+    const { ctx, user } = await requireTenant(slug, "court.manage");
+    const { moveCourt } = await import("@/modules/courts/service");
+    await moveCourt(ctx, courtId, direction === "up" ? "up" : "down", actorOf(user.id));
+    revalidatePath(`/panel/${slug}/canchas`);
+    return "Orden actualizado.";
+  });
+}
+
+export async function moveCourtImageAction(slug: string, courtId: string, imageId: string, direction: "up" | "down", _p: ActionResult, _fd: FormData) {
+  return runAction("court.image.move", async () => {
+    const { ctx, user } = await requireTenant(slug, "court.manage");
+    const { moveCourtImage } = await import("@/modules/courts/service");
+    await moveCourtImage(ctx, imageId, direction === "up" ? "up" : "down", actorOf(user.id));
+    revalidatePath(`/panel/${slug}/canchas/${courtId}`);
+    return "Orden actualizado.";
+  });
+}
+
+/** Texto de advertencia cuando un cambio de horario deja reservas activas fuera del horario. */
+function conflictNote(c: { count: number; sample: { code: string }[] }): string {
+  if (c.count === 0) return "";
+  const codes = c.sample.map((x) => x.code).join(", ");
+  return ` Atención: ${c.count} ${c.count === 1 ? "reserva activa quedó" : "reservas activas quedaron"} fuera del nuevo horario (${codes}${c.count > c.sample.length ? "…" : ""}). No se modificaron: revisalas en Reservas para mantenerlas, reprogramarlas o cancelarlas.`;
 }

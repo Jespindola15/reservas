@@ -12,6 +12,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.NEXT_PHASE === "phase-production-build") return;
+  // En serverless (Netlify/AWS Lambda) no hay proceso persistente: un setInterval correría en cada
+  // instancia "tibia" y multiplicaría la carga. Ahí el ÚNICO scheduler es la función programada.
+  const serverless = Boolean(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+  if (serverless) return;
   try {
     const { startExpirationScheduler } = await import("./modules/jobs/scheduler");
     startExpirationScheduler();

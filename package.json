@@ -19,11 +19,14 @@
     "test:e2e": "next build && playwright test",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:e2e",
     "postinstall": "prisma generate",
-    "job:expire": "tsx scripts/expire-pending.ts"
+    "job:expire": "tsx scripts/expire-pending.ts",
+    "images:migrate": "tsx scripts/migrate-images-to-object.ts",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.27",
     "luxon": "^3.7.2",
     "next": "16.4.6",
@@ -31,6 +34,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

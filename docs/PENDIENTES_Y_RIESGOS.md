@@ -1,4 +1,4 @@
-# TURNUP — Pendientes y riesgos (actualizado en Fase 2)
+# TURNUP — Pendientes y riesgos (actualizado en Fase 3)
 
 ## Resuelto en Fase 2 (antes pendiente)
 
@@ -8,18 +8,20 @@
 - Consulta/cancelación por el jugador (enlace privado con token HMAC).
 - Unificación de la fuente de IP para rate limiting.
 
-## Pendientes (fuera del alcance de la Fase 2)
+## Resuelto en Fase 3
+Notificaciones por email (outbox), recuperación de contraseña, gestión de equipo, CSP de scripts con nonce,
+PWA, tick único + limpieza + salud + alertas, scripts de backup/restauración, planes y límites, visor de
+auditoría, CSV, vista mensual, reordenamiento, optimización de imágenes, abstracción S3/R2, avisos por cambios
+de horario, CI. Detalle en `docs/FASE3.md`.
 
-- Pagos (Mercado Pago), suscripciones automáticas — explícitamente excluidos.
-- Notificaciones (email/WhatsApp): hoy el jugador debe guardar su enlace; si lo pierde, solo el complejo puede ayudarlo.
-- Recuperación de contraseña, 2FA, gestión de equipo (alta de STAFF) por el propio dueño.
-- Reordenar canchas e imágenes; recorte/compresión de imágenes; almacenamiento de objetos (S3/R2).
-- Arrastrar y soltar en el calendario; vista mensual; exportaciones.
-- Superadmin: planes y suscripciones desde la UI (modelo existente), visor de auditoría.
-- Limpieza periódica de `rate_limits` y sesiones vencidas (función existe: `purgeExpiredRateLimits`).
-- CI (GitHub Actions con servicio PostgreSQL) ejecutando `npm run check`.
-- Avisar en la UI qué reservas existentes quedan fuera de un horario nuevo o de un feriado cargado después
-  (hoy se conservan y se advierte con un texto).
+## Pendientes
+- **Confirmar producción** (base, variables, migraciones aplicadas, función programada): ver `docs/INFRAESTRUCTURA.md` §1.
+- Activar servicios externos con autorización: Resend (dominio verificado), monitor de `/api/health`,
+  `ALERT_WEBHOOK_URL`, backups fuera del proveedor, R2 (opcional).
+- 2FA (evaluado: plugin `twoFactor` de Better Auth), CAPTCHA progresivo, verificación del contacto del jugador.
+- Pagos (Mercado Pago) y cobro de suscripciones — excluidos por pedido.
+- Arrastrar y soltar en el calendario; recorte de imágenes; manifest por complejo; API versionada para app nativa.
+- Política de retención de reservas/clientes/auditoría (decisión legal del dueño; hoy no se borran nunca).
 
 ## Riesgos residuales y controles pendientes
 
@@ -31,12 +33,17 @@
 | Enlace privado del jugador: quien lo obtenga puede ver y cancelar esa reserva. | Token de 256 bits, `noindex`, sin terceros, `Referrer-Policy`; rotar `BETTER_AUTH_SECRET` invalida todos. Futuro: verificación por email/SMS. |
 | `app_expire_pending_bookings` es ejecutable por el rol de la app para cualquier complejo. | Solo vence lo objetivamente vencido (lo mismo que haría el job). |
 | RLS depende de variables que fija la app. Protege contra olvidos de filtro, no contra SQL arbitrario con el rol de la app. | Sin SQL dinámico con datos del usuario. Futuro: rol de BD separado para plataforma/jobs. |
-| Programador interno en el proceso de Next: si el servidor está caído no vence nada (al volver, procesa lo atrasado; además las reservas nuevas liberan en el momento). | Para alta disponibilidad, sumar cron externo (endpoint o CLI). |
+| La función programada de Netlify es el único scheduler: si falla o falta `CRON_SECRET`, no vencen solicitudes ni salen emails (las reservas nuevas igual liberan turnos vencidos en el momento). | `/api/health` lo marca `degraded` a los 5 min; configurar un monitor externo. |
 | **Advertencia de `pg`** "client.query() while executing": la origina el runtime de Prisma 7 al lanzar consultas solapadas en una transacción (traza verificada; el código propio ya es secuencial). | No actualizar a `pg@9` hasta que Prisma lo resuelva; seguir el changelog. |
-| Imágenes en la base (bytea) aumentan su tamaño y backups. | Límite 6 × 1,5 MB por cancha; migrar a almacenamiento de objetos. |
-| CSP con `'unsafe-inline'` en scripts. | Pendiente CSP con nonce. |
+| Imágenes en la base (bytea) aumentan su tamaño y backups. | Ahora se optimizan (WebP ≤ 1600 px). Abstracción S3/R2 lista; migración sin ejecutar. |
+| CSP con `'unsafe-inline'` en **estilos** (scripts ya usan nonce). | Riesgo bajo (no permite ejecutar JS). |
+| Emails: si `EMAIL_PROVIDER` no está configurado en producción, no sale ningún aviso (los jugadores dependen de su enlace). | Configurar Resend; `/api/health` avisa “Emails desactivados”. |
+| Un email con enlace de reset/invitación puede reenviarse o quedar en una bandeja comprometida. | Un solo uso, 1 h (reset) / 7 días (invitación), revocables; la invitación exige ingresar con el email invitado. |
+| Bloqueo dirigido: alguien puede agotar el límite de pedidos de reset (3/h) o de login (10/15 min) de una cuenta ajena. | Aceptado; el atacante no obtiene acceso. Evaluar CAPTCHA. |
+| La función `app_expire_pending_bookings` y la cola corren con un contexto “sistema” que ve todos los complejos. | Solo desde el tick protegido; sin entradas del usuario. |
+| Backups: no hay evidencia de backups en producción. | Activar los del proveedor + `scripts/ops/backup.sh` y probar restauración mensual. |
 | Tablas de autenticación sin RLS. | Acceso solo vía Better Auth y la DAL. |
-| Sin 2FA, backups, monitoreo ni política de retención de datos personales (Ley 25.326). | Pendientes de infraestructura/legal. |
+| Sin 2FA ni política de retención de datos personales (Ley 25.326). | 2FA evaluado; retención: decisión legal pendiente. |
 
 No se afirma que el sistema sea invulnerable ni que esté listo para producción: se recomienda revisión de
 seguridad externa y pruebas de carga antes de operar con clientes reales.
@@ -49,3 +56,13 @@ seguridad externa y pruebas de carga antes de operar con clientes reales.
 - Clave de idempotencia generada en `useState` causaba diferencias de hidratación → generada en el servidor.
 - Búsqueda por teléfono con separadores no encontraba al cliente → comparación por dígitos en SQL.
 - `\\D` dentro de un template de JS se convertía en `D` → escape corregido (lo detectó la prueba).
+
+## Problemas encontrados en la Fase 3
+
+- El trigger de permisos bloqueaba el seed (rol dueño) → nueva migración que lo limita al rol de la app.
+- La prueba de imágenes usaba un PNG falso de 12 bytes que antes se aceptaba: con la decodificación real se
+  rechaza (correcto) → la prueba ahora usa una imagen real y verifica WebP, tamaño y EXIF eliminado.
+- Los errores de jobs podían guardar/loguear una URL de base con contraseña → redacción central en logs y `job_runs`.
+- El service worker recargaba la página al instalarse por primera vez y borraba formularios a medio llenar
+  (lo detectó la suite E2E) → solo recarga cuando la persona elige “Actualizar”.
+- En serverless el temporizador interno se habría iniciado en cada instancia → se desactiva solo en Netlify/Lambda.

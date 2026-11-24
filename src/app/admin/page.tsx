@@ -7,6 +7,7 @@ import ui from "@/components/ui.module.css";
 import { requireUserPage } from "@/lib/auth/dal";
 import { listTenantsForPlatform, platformMetrics } from "@/modules/platform/service";
 import { SignOutButton } from "../panel/SignOutButton";
+import { AdminNav } from "./AdminNav";
 import { assignAdminAction, createTenantAction, setTenantStatusAction } from "./actions";
 
 export const metadata: Metadata = { title: "Superadministrador" };
@@ -25,7 +26,7 @@ export default async function AdminPage() {
         <SignOutButton />
       </TopBar>
       <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <h1>Plataforma</h1>
+        <div className={ui.spread}><h1>Plataforma</h1><AdminNav current="/admin" /></div>
         <section className={ui.grid2} aria-label="Métricas">
           {[
             ["Complejos", metrics.tenants],
@@ -41,7 +42,8 @@ export default async function AdminPage() {
 
         <section className={ui.card} aria-labelledby="complejos">
           <h2 id="complejos">Complejos</h2>
-          <table className={ui.table}>
+          <div className={ui.tableWrap}>
+          <table className={`${ui.table} ${ui.tableResponsive}`}>
             <thead><tr><th>Complejo</th><th>Estado</th><th>Canchas / Reservas / Usuarios</th><th>Suscripción</th><th><span className="sr-only">Acciones</span></th></tr></thead>
             <tbody>
               {tenants.map((t) => {
@@ -69,6 +71,7 @@ export default async function AdminPage() {
               })}
             </tbody>
           </table>
+          </div>
         </section>
 
         <div className={ui.grid2}>

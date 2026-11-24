@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
@@ -53,6 +54,7 @@ export function LoginForm({ next }: { next: string | null }) {
       <button className={ui.button} type="submit" disabled={pending}>
         {pending ? "Ingresando…" : "Ingresar"}
       </button>
+      <Link href="/recuperar" className={ui.muted}>¿Olvidaste tu contraseña?</Link>
     </form>
   );
 }

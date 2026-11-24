@@ -6,6 +6,7 @@ import { requireTenantPage } from "@/lib/auth/page";
 import { isAppError } from "@/lib/errors";
 import { formatLocalDateTime } from "@/modules/booking/time";
 import { listCustomers } from "@/modules/customers/service";
+import { hasPermission } from "@/modules/access/authorize";
 
 export const metadata: Metadata = { title: "Clientes" };
 
@@ -30,6 +31,9 @@ export default async function CustomersPage({ params, searchParams }: { params: 
           <p className={ui.eyebrow}>Gestión</p>
           <h1>Clientes</h1>
         </div>
+        {hasPermission(access.role, "data.export") ? (
+          <a className={`${ui.button} ${ui.buttonSecondary}`} href={`/panel/${slug}/exportar?tipo=clientes`} download>Exportar CSV</a>
+        ) : null}
       </header>
       <form className={`${ui.card} ${ui.row}`} style={{ marginBottom: "1rem" }} role="search">
         <label className="sr-only" htmlFor="q">Buscar cliente</label>

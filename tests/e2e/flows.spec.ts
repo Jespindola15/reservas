@@ -266,3 +266,95 @@ test("el job de vencimiento exige secreto", async ({ request }) => {
   const ok = await request.post("/api/internal/jobs/expire-pending", { headers: { authorization: `Bearer ${E2E_ENV.CRON_SECRET}` } });
   expect(ok.status()).toBe(200);
 });
+
+// ------------------------------------------------------------------ Fase 3
+
+test("recuperar contraseña: mismo mensaje exista o no la cuenta @mobile", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
+  await expect(page).toHaveURL(/\/recuperar/);
+  for (const email of ["duenio@padel-centro.example.com", "no-existe@example.com"]) {
+    await page.goto("/recuperar");
+    await page.getByLabel("Email").fill(email);
+    await page.getByRole("button", { name: /enviar/i }).click();
+    await expect(page.getByText(/Si el email corresponde a una cuenta/)).toBeVisible();
+  }
+  // Un enlace con token inválido no ofrece el formulario.
+  await page.goto("/restablecer?token=..malo");
+  await expect(page.getByText(/no es válido|venció/i)).toBeVisible();
+});
+
+test("dueño: equipo, vista mensual, exportación CSV y aviso de horario", async ({ page }) => {
+  await login(page, "duenio@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  await page.goto("/panel/futbol-norte/equipo");
+  await expect(page.getByRole("heading", { name: "Equipo" })).toBeVisible();
+  await expect(page.getByText("staff@futbol-norte.example.com")).toBeVisible();
+  await page.getByLabel("Email").fill(`nuevo-${Date.now()}@example.com`);
+  await page.getByRole("button", { name: "Enviar invitación" }).click();
+  await expect(page.getByText("Invitación enviada")).toBeVisible();
+  await expect(page.getByText("Invitaciones pendientes")).toBeVisible();
+
+  await page.goto("/panel/futbol-norte/calendario?view=month");
+  await expect(page.getByRole("grid", { name: "Mes" })).toBeVisible();
+
+  await page.goto("/panel/futbol-norte/reservas");
+  const download = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Exportar CSV" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^turnup-futbol-norte-reservas-\d{4}-\d{2}-\d{2}\.csv$/);
+});
+
+test("personal no puede exportar ni gestionar el equipo", async ({ page }) => {
+  await login(page, "staff@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  expect((await page.goto("/panel/futbol-norte/equipo"))?.status()).toBe(404);
+  const res = await page.request.get("/panel/futbol-norte/exportar?tipo=reservas");
+  expect(res.status()).toBe(403);
+  await page.goto("/panel/futbol-norte/reservas");
+  await expect(page.getByRole("link", { name: "Exportar CSV" })).toHaveCount(0);
+});
+
+test("superadmin: planes y auditoría con filtros", async ({ page }) => {
+  await login(page, "superadmin@example.com", E2E_ENV.SEED_SUPERADMIN_PASSWORD);
+  await page.waitForURL("**/panel");
+  await page.goto("/admin/planes");
+  await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Nombre").fill("Plan E2E");
+  await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Código").fill(`e2e-${Date.now() % 100000}`);
+  await page.getByRole("button", { name: "Crear plan" }).click();
+  await expect(page.getByText("Plan creado.")).toBeVisible();
+  await page.goto("/admin/auditoria?action=platform.plan");
+  await expect(page.getByText("platform.plan.created").first()).toBeVisible();
+});
+
+test("PWA: manifest, service worker sin caché del navegador y página offline", async ({ request, page }) => {
+  const m = await request.get("/manifest.webmanifest");
+  expect(m.status()).toBe(200);
+  const json = await m.json();
+  expect(json).toMatchObject({ short_name: "TURNUP", display: "standalone" });
+  const sw = await request.get("/sw.js");
+  expect(sw.status()).toBe(200);
+  expect(sw.headers()["cache-control"]).toMatch(/no-cache|no-store/);
+  for (const icon of json.icons) expect((await request.get(icon.src)).status()).toBe(200);
+  const off = await page.goto("/offline");
+  expect(off?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Sin conexión" })).toBeVisible();
+  // El navegador instala el service worker y no guarda en caché respuestas de la API.
+  await page.goto("/");
+  const cached = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    if (!reg.active) throw new Error("service worker no activo");
+    const urls: string[] = [];
+    for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) urls.push(new URL(r.url).pathname);
+    return urls;
+  });
+  expect(cached.some((u) => u.startsWith("/api/") || u.startsWith("/panel"))).toBe(false);
+});
+
+test("endpoints internos: tick y salud", async ({ request }) => {
+  expect((await request.post("/api/internal/jobs/tick")).status()).toBe(401);
+  const ok = await request.post("/api/internal/jobs/tick", { headers: { authorization: `Bearer ${E2E_ENV.CRON_SECRET}` } });
+  expect(ok.status()).toBe(200);
+  const health = await request.get("/api/health");
+  expect(Object.keys(await health.json())).toEqual(["status"]);
+});

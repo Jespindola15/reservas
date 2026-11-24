@@ -215,17 +215,36 @@ describe("imágenes y ajustes", () => {
   it("detecta el tipo por firma y rechaza archivos disfrazados", async () => {
     expect(sniffImageType(png)).toBe("image/png");
     expect(sniffImageType(new TextEncoder().encode("<svg onload=alert(1)>"))).toBeNull();
-    await addCourtImage(f.ctx, f.court.id, png, admin);
+    // Una firma PNG válida pero con contenido corrupto también se rechaza (se decodifica de verdad).
+    await expectCode(addCourtImage(f.ctx, f.court.id, png, admin), "IMAGE_INVALID");
+    const sharp = (await import("sharp")).default;
+    const real = new Uint8Array(
+      await sharp({ create: { width: 2400, height: 1200, channels: 3, background: "#1a7f37" } })
+        .withMetadata({ exif: { IFD0: { Copyright: "secreto-gps" } } })
+        .jpeg()
+        .toBuffer(),
+    );
+    await addCourtImage(f.ctx, f.court.id, real, admin);
+    const saved = await owner.courtImage.findFirstOrThrow({ where: { courtId: f.court.id } });
+    // Optimizada: WebP, redimensionada a 1600 px y sin metadatos EXIF.
+    expect(saved.contentType).toBe("image/webp");
+    expect(saved.width).toBe(1600);
+    expect(saved.storage).toBe("DATABASE");
+    const meta = await sharp(Buffer.from(saved.data!)).metadata();
+    expect(meta.exif).toBeUndefined();
     await expectCode(addCourtImage(f.ctx, f.court.id, new TextEncoder().encode("<html>"), admin), "IMAGE_INVALID");
     await expectCode(addCourtImage(f.ctx, f.court.id, new Uint8Array(1_600_000).fill(0xff), admin), "IMAGE_INVALID");
-    await expectCode(addCourtImage(f.ctx, g.court.id, png, admin), "COURT_NOT_FOUND");
+    await expectCode(addCourtImage(f.ctx, g.court.id, real, admin), "COURT_NOT_FOUND");
   });
 
   it("limita los ajustes del complejo a rangos seguros", async () => {
-    const valid = { name: "Complejo", bookingRequiresApproval: true, minLeadMinutes: 30, maxAdvanceDays: 20, pendingExpirationMinutes: 45, publicCancellationMinutes: 60 };
+    const valid = { name: "Complejo", bookingRequiresApproval: true, minLeadMinutes: 30, maxAdvanceDays: 20, pendingExpirationMinutes: 45, publicCancellationMinutes: 60, notificationsEnabled: true, notifyPlayers: true, notifyOwner: false, ownerNotificationEmail: "", reminderHoursBefore: 3, digestEnabled: false, digestHour: 8 };
     await updateTenantSettings(f.ctx, valid, admin);
     expect((await owner.tenant.findUniqueOrThrow({ where: { id: f.tenant.id } })).pendingExpirationMinutes).toBe(45);
     await expectCode(updateTenantSettings(f.ctx, { ...valid, pendingExpirationMinutes: 1 }, admin), "VALIDATION_ERROR");
     await expectCode(updateTenantSettings(f.ctx, { ...valid, pendingExpirationMinutes: 99_999 }, admin), "VALIDATION_ERROR");
+    await expectCode(updateTenantSettings(f.ctx, { ...valid, reminderHoursBefore: 49 }, admin), "VALIDATION_ERROR");
+    await expectCode(updateTenantSettings(f.ctx, { ...valid, digestHour: 24 }, admin), "VALIDATION_ERROR");
+    await expectCode(updateTenantSettings(f.ctx, { ...valid, ownerNotificationEmail: "no-es-email" }, admin), "VALIDATION_ERROR");
   });
 });

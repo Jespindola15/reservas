@@ -6,7 +6,7 @@ import { DateTime } from "luxon";
 import { ActionForm } from "@/components/ActionForm";
 import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
-import { getCalendar } from "@/modules/booking/admin-queries";
+import { getCalendar, getMonthSummary } from "@/modules/booking/admin-queries";
 import { formatLocalTime, localMidnight, minutesToHHMM, todayIn } from "@/modules/booking/time";
 import { createManualBookingAction } from "../actions";
 import { STATUS_LABEL } from "../labels";
@@ -28,12 +28,13 @@ export default async function CalendarPage({ params, searchParams }: { params: P
   const tz = tenant.timezone;
   const today = todayIn(tz);
   const date = sp.date && localMidnight(sp.date, tz) ? sp.date : today;
-  const view: "day" | "week" = sp.view === "week" ? "week" : "day";
+  const view: "day" | "week" | "month" = sp.view === "week" ? "week" : sp.view === "month" ? "month" : "day";
   const startDate = view === "week" ? localMidnight(date, tz)!.startOf("week").toISODate()! : date;
   const courtFilter = sp.court && /^[0-9a-f-]{36}$/i.test(sp.court) ? sp.court : undefined;
 
-  const cal = await getCalendar(ctx, tz, { date: startDate, days: view === "week" ? 7 : 1, courtId: view === "week" ? courtFilter : undefined });
-  const allCourts = view === "week" && courtFilter ? (await getCalendar(ctx, tz, { date: startDate, days: 1 })).courts : cal.courts;
+  const cal = await getCalendar(ctx, tz, { date: startDate, days: view === "week" ? 7 : 1, courtId: view !== "day" ? courtFilter : undefined });
+  const allCourts = view !== "day" && courtFilter ? (await getCalendar(ctx, tz, { date: startDate, days: 1 })).courts : cal.courts;
+  const month = view === "month" ? await getMonthSummary(ctx, tz, date.slice(0, 7), courtFilter) : null;
 
   const base = `/panel/${slug}/calendario`;
   const qs = (o: Partial<SP>) => {
@@ -42,9 +43,14 @@ export default async function CalendarPage({ params, searchParams }: { params: P
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, String(v));
     return `${base}?${p.toString()}`;
   };
-  const shift = (n: number) => localMidnight(date, tz)!.plus({ days: view === "week" ? 7 * n : n }).toISODate()!;
+  const shift = (n: number) =>
+    view === "month"
+      ? localMidnight(`${date.slice(0, 7)}-01`, tz)!.plus({ months: n }).toISODate()!
+      : localMidnight(date, tz)!.plus({ days: view === "week" ? 7 * n : n }).toISODate()!;
   const title =
-    view === "week"
+    view === "month"
+      ? localMidnight(`${date.slice(0, 7)}-01`, tz)!.setLocale("es-AR").toFormat("LLLL yyyy")
+      : view === "week"
       ? `Semana del ${DateTime.fromISO(startDate).setLocale("es-AR").toFormat("d 'de' LLLL")}`
       : localMidnight(date, tz)!.setLocale("es-AR").toFormat("cccc d 'de' LLLL");
 
@@ -59,6 +65,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
           <div className={styles.segmented} role="group" aria-label="Vista">
             <Link href={qs({ view: "day" })} className={view === "day" ? styles.segActive : styles.seg} aria-current={view === "day" ? "page" : undefined}>Día</Link>
             <Link href={qs({ view: "week" })} className={view === "week" ? styles.segActive : styles.seg} aria-current={view === "week" ? "page" : undefined}>Semana</Link>
+            <Link href={qs({ view: "month" })} className={view === "month" ? styles.segActive : styles.seg} aria-current={view === "month" ? "page" : undefined}>Mes</Link>
           </div>
           <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: shift(-1) })} aria-label="Anterior">←</Link>
           <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: today })}>Hoy</Link>
@@ -93,6 +100,8 @@ export default async function CalendarPage({ params, searchParams }: { params: P
 
       {cal.courts.length === 0 ? (
         <p className={ui.empty}>No hay canchas activas. <Link href={`/panel/${slug}/canchas`}>Crear una cancha</Link></p>
+      ) : month ? (
+        <MonthGrid month={month} qs={qs} today={today} courts={allCourts} courtFilter={courtFilter} />
       ) : view === "day" ? (
         <DayGrid slug={slug} tz={tz} cal={cal} date={date} qs={qs} />
       ) : (
@@ -174,6 +183,43 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
         })}
       </div>
     </div>
+  );
+}
+
+function MonthGrid({ month, qs, today, courts, courtFilter }: { month: Awaited<ReturnType<typeof getMonthSummary>>; qs: (o: Partial<SP>) => string; today: string; courts: Cal["courts"]; courtFilter?: string }) {
+  const first = DateTime.fromISO(month.firstDay);
+  const lead = first.weekday - 1; // lunes = 0
+  const cells: (string | null)[] = [...Array.from({ length: lead }, () => null), ...Array.from({ length: month.daysInMonth }, (_, i) => first.plus({ days: i }).toISODate()!)];
+  while (cells.length % 7) cells.push(null);
+  return (
+    <>
+      <form className={ui.row} style={{ marginBottom: "0.75rem" }}>
+        <input type="hidden" name="view" value="month" />
+        <input type="hidden" name="date" value={month.firstDay} />
+        <label className={ui.muted} htmlFor="court-filter-m">Cancha</label>
+        <select id="court-filter-m" name="court" className={ui.select} defaultValue={courtFilter ?? ""} style={{ maxWidth: 240 }}>
+          <option value="">Todas</option>
+          {courts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <button className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Filtrar</button>
+      </form>
+      <div className={styles.monthGrid} role="grid" aria-label="Mes">
+        {["lun", "mar", "mié", "jue", "vie", "sáb", "dom"].map((d) => <div key={d} className={styles.monthHead} role="columnheader">{d}</div>)}
+        {cells.map((d, i) => {
+          if (!d) return <div key={`e${i}`} className={styles.monthEmpty} aria-hidden />;
+          const info = month.days[d];
+          const closed = month.closed[d];
+          return (
+            <Link key={d} href={qs({ view: "day", date: d })} className={`${styles.monthDay} ${d === today ? styles.today : ""}`} role="gridcell" aria-label={`${d}: ${info?.total ?? 0} reservas${closed ? ", cerrado" : ""}`}>
+              <span className={styles.monthNum}>{Number(d.slice(8))}</span>
+              {closed ? <span className={`${styles.chip} ${styles.block}`}>Cerrado</span> : null}
+              {info?.confirmed ? <span className={`${styles.chip} ${styles.CONFIRMED}`}>{info.confirmed}</span> : null}
+              {info?.pending ? <span className={`${styles.chip} ${styles.PENDING}`}>{info.pending} pend.</span> : null}
+            </Link>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

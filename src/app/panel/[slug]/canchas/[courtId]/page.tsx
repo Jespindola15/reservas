@@ -12,6 +12,7 @@ import {
   addPriceRuleAction,
   deleteCourtAction,
   deleteCourtImageAction,
+  moveCourtImageAction,
   deletePriceRuleAction,
   saveWeeklyScheduleAction,
   setCourtActiveAction,
@@ -205,13 +206,17 @@ export default async function CourtPage({
             </div>
             {court.images.length ? (
               <div className={styles.images}>
-                {court.images.map((img) => (
+                {court.images.map((img, idx) => (
                   <div key={img.id} className={styles.imageItem}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/api/public/${slug}/courts/${court.id}/images/${img.id}`} alt={`Imagen de ${court.name}`} />
-                    <ActionForm action={deleteCourtImageAction.bind(null, slug, court.id)} submitLabel="Quitar" variant="ghost" small quietSuccess>
-                      <input type="hidden" name="imageId" value={img.id} />
-                    </ActionForm>
+                    <div className={ui.row} style={{ gap: "0.25rem" }}>
+                      <ActionForm action={moveCourtImageAction.bind(null, slug, court.id, img.id, "up")} submitLabel="←" ariaLabel="Mover antes" variant="ghost" small quietSuccess disabled={idx === 0} />
+                      <ActionForm action={moveCourtImageAction.bind(null, slug, court.id, img.id, "down")} submitLabel="→" ariaLabel="Mover después" variant="ghost" small quietSuccess disabled={idx === court.images.length - 1} />
+                      <ActionForm action={deleteCourtImageAction.bind(null, slug, court.id)} submitLabel="Quitar" variant="ghost" small quietSuccess>
+                        <input type="hidden" name="imageId" value={img.id} />
+                      </ActionForm>
+                    </div>
                   </div>
                 ))}
               </div>

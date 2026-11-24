@@ -63,3 +63,15 @@ export async function withPlatformAdmin<T>(userId: string, fn: (tx: Tx) => Promi
     return fn(tx);
   }, TX_OPTIONS);
 }
+
+/**
+ * Contexto de SISTEMA (tareas programadas, aceptación de invitaciones): ve todos
+ * los complejos como la plataforma, sin un usuario detrás. Solo lo invocan jobs
+ * del servidor y flujos ya validados con un token de un solo uso.
+ */
+export async function withSystem<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('app.platform_admin', 'on', true), set_config('app.user_id', '', true)`;
+    return fn(tx);
+  }, TX_OPTIONS);
+}

@@ -56,3 +56,19 @@
   .weekGrid { grid-template-columns: 1fr; }
   .weekDay { min-height: 0; }
 }
+
+/* Vista mensual */
+.monthGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.4rem; }
+.monthHead { text-align: center; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-faint); padding: 0.3rem 0; }
+.monthEmpty { min-height: 88px; }
+.monthDay { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; min-height: 88px; padding: 0.45rem; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
+.monthDay:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.monthDay:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.monthNum { font-weight: 800; font-size: 0.9rem; }
+.monthDay .chip { font-size: 0.68rem; padding: 0.1rem 0.45rem; }
+@media (max-width: 640px) {
+  .monthGrid { gap: 0.2rem; }
+  .monthDay, .monthEmpty { min-height: 64px; padding: 0.3rem; }
+  .monthDay .chip { font-size: 0.6rem; padding: 0.05rem 0.3rem; }
+}
+.monthDay.today { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }

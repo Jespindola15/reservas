@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { isAppError, toPublicError } from "@/lib/errors";
-import { enforceRateLimit } from "@/lib/http";
+import { enforceIpRateLimit } from "@/lib/http";
 import { getClientIp } from "@/lib/security/client-ip";
 import { formatMoney } from "@/modules/booking/pricing";
 import { getPublicBooking } from "@/modules/booking/public-access";
@@ -33,7 +33,7 @@ export default async function TrackingPage({ params, searchParams }: { params: P
   let view;
   let error: string | null = null;
   try {
-    await enforceRateLimit(`publink:ip:${getClientIp(await headers())}`, { window: 600, max: 60 });
+    await enforceIpRateLimit(getClientIp(await headers()), "publink", { window: 600, max: 60 });
     view = await getPublicBooking(slug, code, t);
   } catch (e) {
     if (!isAppError(e)) throw e;

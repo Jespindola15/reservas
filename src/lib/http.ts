@@ -23,6 +23,15 @@ export function jsonError(e: unknown, context: Record<string, unknown> = {}) {
   return NextResponse.json({ error: { ...body, requestId } }, { status, headers });
 }
 
+/**
+ * Límite por IP. Si la IP es "unknown" (proxy sin configurar), en lugar de que
+ * TODOS compartan el cupo normal (bloqueo global por mala configuración), se usa
+ * un techo global 20 veces mayor que sigue frenando abusos masivos.
+ */
+export async function enforceIpRateLimit(ip: string, key: string, rule: RateLimitRule) {
+  return enforceRateLimit(`${key}:ip:${ip}`, ip === "unknown" ? { window: rule.window, max: rule.max * 20 } : rule);
+}
+
 export async function enforceRateLimit(key: string, rule: RateLimitRule) {
   const res = await consumeRateLimit(key, rule);
   if (!res.allowed) throw new AppError("RATE_LIMITED", { retryAfter: res.retryAfter ?? rule.window });

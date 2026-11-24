@@ -9,12 +9,13 @@ import { SignOutButton } from "./SignOutButton";
 
 export const metadata: Metadata = { title: "Mis complejos" };
 
-export default async function PanelIndex({ searchParams }: { searchParams: Promise<{ suspended?: string }> }) {
+export default async function PanelIndex({ searchParams }: { searchParams: Promise<{ suspended?: string; ir?: string }> }) {
   const user = await requireUserPage("/panel");
-  const { suspended } = await searchParams;
+  const { suspended, ir } = await searchParams;
+  const section = ir === "calendario" || ir === "reservas" ? `/${ir}` : "";
   const tenants = await listMyTenants(user.id);
   const active = tenants.filter((t) => t.status === "ACTIVE");
-  if (active.length === 1 && !suspended && user.platformRole !== "SUPERADMIN") redirect(`/panel/${active[0]!.slug}`);
+  if (active.length === 1 && !suspended && user.platformRole !== "SUPERADMIN") redirect(`/panel/${active[0]!.slug}${section}`);
 
   return (
     <>

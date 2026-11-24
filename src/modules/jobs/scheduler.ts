@@ -1,10 +1,14 @@
 import { getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { expirePendingBookings } from "./expire-pending";
+import { tick as runTick } from "./runner";
 
 const g = globalThis as unknown as { __turnupExpirationTimer?: NodeJS.Timeout; __turnupExpirationRunning?: boolean };
 
-/** Programador interno con un solo temporizador por proceso y sin ejecuciones solapadas. */
+/**
+ * Programador INTERNO (solo para servidores persistentes: `next start`, VPS, Docker).
+ * En Netlify/serverless debe estar apagado (EXPIRATION_SCHEDULER=off): ahí corre la
+ * función programada. Un solo temporizador por proceso y sin ejecuciones solapadas.
+ */
 export function startExpirationScheduler() {
   const env = getEnv();
   if (env.EXPIRATION_SCHEDULER === "off" || env.NODE_ENV === "test" || g.__turnupExpirationTimer) return;
@@ -13,7 +17,7 @@ export function startExpirationScheduler() {
     if (g.__turnupExpirationRunning) return; // la ejecución anterior sigue en curso
     g.__turnupExpirationRunning = true;
     try {
-      await expirePendingBookings();
+      await runTick();
     } catch (e) {
       logger.error("job.expire_pending.failed", e);
     } finally {

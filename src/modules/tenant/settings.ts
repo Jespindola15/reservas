@@ -15,6 +15,13 @@ export const tenantSettingsSchema = z.object({
   maxAdvanceDays: z.number().int().min(1).max(365),
   pendingExpirationMinutes: z.number().int().min(5).max(1440),
   publicCancellationMinutes: z.number().int().min(0).max(10080),
+  notificationsEnabled: z.boolean(),
+  notifyPlayers: z.boolean(),
+  notifyOwner: z.boolean(),
+  ownerNotificationEmail: z.union([z.literal(""), z.email().max(254)]).optional().transform((v) => (v ? v.toLowerCase() : null)),
+  reminderHoursBefore: z.number().int().min(0).max(48),
+  digestEnabled: z.boolean(),
+  digestHour: z.number().int().min(0).max(23),
 });
 export type TenantSettingsInput = z.input<typeof tenantSettingsSchema>;
 
@@ -36,6 +43,13 @@ export async function getTenantSettings(ctx: TenantContext) {
         maxAdvanceDays: true,
         pendingExpirationMinutes: true,
         publicCancellationMinutes: true,
+        notificationsEnabled: true,
+        notifyPlayers: true,
+        notifyOwner: true,
+        ownerNotificationEmail: true,
+        reminderHoursBefore: true,
+        digestEnabled: true,
+        digestHour: true,
       },
     }),
   );

@@ -1,4 +1,4 @@
-import { enforceRateLimit, jsonError, jsonOk } from "@/lib/http";
+import { enforceIpRateLimit, jsonError, jsonOk } from "@/lib/http";
 import { getClientIp } from "@/lib/security/client-ip";
 import { parseOrThrow } from "@/lib/validation";
 import { getDayAvailability } from "@/modules/booking/availability";
@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   try {
     const { slug } = await params;
     const ip = getClientIp(req.headers);
-    await enforceRateLimit(`avail:ip:${ip}`, { window: 60, max: 120 });
+    await enforceIpRateLimit(ip, "avail", { window: 60, max: 120 });
 
     const url = new URL(req.url);
     const q = parseOrThrow(availabilityQuerySchema, {

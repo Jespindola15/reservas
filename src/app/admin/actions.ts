@@ -52,3 +52,44 @@ export async function setTenantStatusAction(_p: ActionResult, fd: FormData) {
     return input.status === "ACTIVE" ? "Complejo activado." : "Complejo suspendido.";
   });
 }
+
+// ---------------------------------------------------------------- Planes
+
+const limitField = (fd: FormData, k: string) => String(fd.get(k) ?? "");
+
+export async function savePlanAction(planId: string | null, _p: ActionResult, fd: FormData) {
+  return runAction("platform.savePlan", async () => {
+    const user = await requireSuperadmin();
+    const { savePlan } = await import("@/modules/platform/plans");
+    await savePlan(user, planId, {
+      code: String(fd.get("code") ?? ""),
+      name: String(fd.get("name") ?? ""),
+      priceAmount: String(fd.get("priceAmount") ?? "0"),
+      currency: String(fd.get("currency") ?? "ARS") || "ARS",
+      maxCourts: limitField(fd, "maxCourts"),
+      maxMembers: limitField(fd, "maxMembers"),
+      description: String(fd.get("description") ?? ""),
+      isActive: fd.get("isActive") === "on",
+    });
+    revalidatePath("/admin/planes");
+    return planId ? "Plan actualizado." : "Plan creado.";
+  });
+}
+
+export async function assignSubscriptionAction(_p: ActionResult, fd: FormData) {
+  return runAction("platform.assignSubscription", async () => {
+    const user = await requireSuperadmin();
+    const { assignSubscription } = await import("@/modules/platform/plans");
+    const res = await assignSubscription(user, {
+      tenantId: String(fd.get("tenantId") ?? ""),
+      planId: String(fd.get("planId") ?? ""),
+      status: String(fd.get("status") ?? "ACTIVE") as "ACTIVE",
+      currentPeriodStart: String(fd.get("currentPeriodStart") ?? ""),
+      currentPeriodEnd: String(fd.get("currentPeriodEnd") ?? ""),
+      notes: String(fd.get("notes") ?? ""),
+    });
+    revalidatePath("/admin");
+    revalidatePath("/admin/planes");
+    return res.warnings.length ? `Plan asignado. Atención: el complejo ${res.warnings.join(" y ")}; no podrá crear más hasta ajustarse.` : "Plan asignado.";
+  });
+}
