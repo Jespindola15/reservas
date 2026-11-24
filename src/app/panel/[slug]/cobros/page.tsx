@@ -95,10 +95,10 @@ export default async function PaymentSettingsPage({ params }: { params: Promise<
               </label>
             </ActionForm>
           ) : (
-            <dl>
-              <dt className={ui.label}>Pago anticipado</dt><dd>{DEPOSIT_LABEL[tenant.depositType as keyof typeof DEPOSIT_LABEL] ?? tenant.depositType}</dd>
-              <dt className={ui.label}>Plazo para transferir</dt><dd>{s?.transferWindowMinutes ?? 30} min</dd>
-              <dt className={ui.label}>Plazo para revisar</dt><dd>{s?.reviewWindowMinutes ?? 180} min</dd>
+            <dl className={ui.dl}>
+              <dt>Pago anticipado</dt><dd>{DEPOSIT_LABEL[tenant.depositType as keyof typeof DEPOSIT_LABEL] ?? tenant.depositType}</dd>
+              <dt>Plazo para transferir</dt><dd>{s?.transferWindowMinutes ?? 30} min</dd>
+              <dt>Plazo para revisar</dt><dd>{s?.reviewWindowMinutes ?? 180} min</dd>
             </dl>
           )}
         </section>

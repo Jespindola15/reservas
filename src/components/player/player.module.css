@@ -39,7 +39,7 @@
 .chipOn { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
 
 /* Tarjetas de complejo */
-.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
 .rail { list-style: none; margin: 0; padding: 0 0 0.4rem; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 78%); gap: 0.8rem; overflow-x: auto; scroll-snap-type: x mandatory; }
 .rail > li { scroll-snap-align: start; }
 @media (min-width: 700px) { .rail { grid-auto-columns: minmax(260px, 32%); } }

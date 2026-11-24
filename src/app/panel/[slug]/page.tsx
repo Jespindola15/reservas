@@ -7,6 +7,7 @@ import { formatLocalDateTime, formatLocalTime, localMidnight } from "@/modules/b
 import { getDashboard } from "@/modules/dashboard/queries";
 import { hasPermission } from "@/modules/access/authorize";
 import { getOnboarding } from "@/modules/tenant/onboarding";
+import { panelBadges } from "@/modules/inbox/service";
 import { STATUS_LABEL, actionLabel } from "./labels";
 import styles from "./dashboard.module.css";
 
@@ -22,7 +23,9 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   const base = `/panel/${slug}`;
   const onboarding = hasPermission(access.role, "tenant.settings") ? await getOnboarding(access.ctx) : null;
 
+  const badges = await panelBadges(access.ctx);
   const stats = [
+    ...(badges.transfers > 0 ? [{ label: "Transferencias por verificar", value: badges.transfers, hint: "Informadas por jugadores: revisá tu cuenta", href: `${base}/transferencias`, highlight: true }] : []),
     { label: "Turnos hoy", value: d.totals.today, hint: "Pendientes y confirmados", href: `${base}/calendario` },
     { label: "Confirmadas hoy", value: d.totals.confirmedToday, hint: `${d.totals.cancelledToday} canceladas/rechazadas`, href: `${base}/reservas?status=CONFIRMED` },
     { label: "Pendientes de aprobar", value: d.totals.pendingUpcoming, hint: "Vencen solas si no se aprueban", href: `${base}/reservas?status=PENDING`, highlight: d.totals.pendingUpcoming > 0 },
@@ -134,7 +137,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
           </section>
         </div>
       </div>
-      <p className={ui.faint} style={{ marginTop: "1rem" }}>TURNUP todavía no procesa pagos: los importes de las reservas son informativos y no implican cobro.</p>
+      <p className={ui.faint} style={{ marginTop: "1rem" }}>TURNUP no cobra ni recibe dinero: las señas por transferencia van directo a tu cuenta y vos las verificás.</p>
     </>
   );
 }

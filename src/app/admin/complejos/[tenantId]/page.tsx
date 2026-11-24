@@ -54,12 +54,12 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
         <div className={ui.grid2} style={{ alignItems: "start" }}>
           <section className={ui.card} aria-labelledby="datos">
             <h2 id="datos">Datos</h2>
-            <dl>
-              <dt className={ui.label}>Dirección</dt><dd>{[t.address, t.city, t.province].filter(Boolean).join(", ") || "—"}</dd>
-              <dt className={ui.label}>Contacto</dt><dd>{t.contactPhone ?? "—"}</dd>
-              <dt className={ui.label}>Alta</dt><dd>{day(t.createdAt)}</dd>
-              <dt className={ui.label}>Cobro por transferencia</dt><dd>{t.depositType === "NONE" ? "No pide pago anticipado" : t.paymentSettings ? "Configurado" : "Pide seña pero no cargó datos (reservas online bloqueadas)"}</dd>
-              <dt className={ui.label}>En el catálogo</dt><dd>{t.publicListed && t.status === "ACTIVE" && !t.archivedAt ? "Sí" : "No"}</dd>
+            <dl className={ui.dl}>
+              <dt>Dirección</dt><dd>{[t.address, t.city, t.province].filter(Boolean).join(", ") || "—"}</dd>
+              <dt>Contacto</dt><dd>{t.contactPhone ?? "—"}</dd>
+              <dt>Alta</dt><dd>{day(t.createdAt)}</dd>
+              <dt>Cobro por transferencia</dt><dd>{t.depositType === "NONE" ? "No pide pago anticipado" : t.paymentSettings ? "Configurado" : "Pide seña pero no cargó datos (reservas online bloqueadas)"}</dd>
+              <dt>En el catálogo</dt><dd>{t.publicListed && t.status === "ACTIVE" && !t.archivedAt ? "Sí" : "No"}</dd>
             </dl>
             <ActionForm action={renameTenantAction.bind(null, t.id)} submitLabel="Guardar nombre" small className={ui.row}>
               <input className={ui.input} name="name" defaultValue={t.name} minLength={2} maxLength={80} required aria-label="Nombre del complejo" style={{ maxWidth: 260 }} />
@@ -103,7 +103,7 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
             </ActionForm>
             {trial ? (
               <ActionForm action={extendTrialAction.bind(null, t.id)} submitLabel="Extender prueba" small className={ui.stack}>
-                <label className={ui.field}><span className={ui.label}>Días a sumar (vence hoy el {day(trial.currentPeriodEnd)})</span><input className={ui.input} type="number" name="days" min={1} max={90} required defaultValue={14} /></label>
+                <label className={ui.field}><span className={ui.label}>Días a sumar (hoy vence el {day(trial.currentPeriodEnd)})</span><input className={ui.input} type="number" name="days" min={1} max={90} required defaultValue={14} /></label>
               </ActionForm>
             ) : null}
           </div>

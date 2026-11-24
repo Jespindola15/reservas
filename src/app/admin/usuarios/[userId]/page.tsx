@@ -38,14 +38,14 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
         <div className={ui.grid2} style={{ alignItems: "start" }}>
           <section className={ui.card} aria-labelledby="datos">
             <h2 id="datos">Datos</h2>
-            <dl>
-              <dt className={ui.label}>Email</dt><dd>{u.email} {u.emailVerified ? <span className={ui.faint}>(verificado)</span> : null}</dd>
-              <dt className={ui.label}>Rol de plataforma</dt><dd>{u.platformRole === "SUPERADMIN" ? "Superadministrador" : "Usuario"}{u.twoFactorEnabled ? " · 2FA activo" : ""}</dd>
-              <dt className={ui.label}>Estado</dt>
+            <dl className={ui.dl}>
+              <dt>Email</dt><dd>{u.email} {u.emailVerified ? <span className={ui.faint}>(verificado)</span> : null}</dd>
+              <dt>Rol de plataforma</dt><dd>{u.platformRole === "SUPERADMIN" ? "Superadministrador" : "Usuario"}{u.twoFactorEnabled ? " · 2FA activo" : ""}</dd>
+              <dt>Estado</dt>
               <dd>{u.anonymizedAt ? `Eliminado el ${when(u.anonymizedAt)}` : u.isDisabled ? `Suspendido${u.suspendedAt ? ` el ${when(u.suspendedAt)}` : ""}${u.suspendedReason ? ` · ${u.suspendedReason}` : ""}` : "Activo"}</dd>
-              <dt className={ui.label}>Alta</dt><dd>{when(u.createdAt)}</dd>
-              <dt className={ui.label}>Última actividad</dt><dd>{d.lastSeenAt ? when(d.lastSeenAt) : "—"} · {d.sessions} sesión(es) abiertas</dd>
-              <dt className={ui.label}>Jugador</dt><dd>{u.playerProfile ? `Sí · ${d.bookingsTotal} reservas (${d.bookingsFuture} futuras)` : "No"}</dd>
+              <dt>Alta</dt><dd>{when(u.createdAt)}</dd>
+              <dt>Última actividad</dt><dd>{d.lastSeenAt ? when(d.lastSeenAt) : "—"} · {d.sessions} sesión(es) abiertas</dd>
+              <dt>Jugador</dt><dd>{u.playerProfile ? `Sí · ${d.bookingsTotal} reservas (${d.bookingsFuture} futuras)` : "No"}</dd>
             </dl>
             {!u.anonymizedAt ? (
               <ActionForm action={renameUserAction.bind(null, u.id)} submitLabel="Guardar nombre" small className={ui.row}>

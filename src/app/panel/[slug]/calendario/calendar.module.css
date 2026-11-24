@@ -44,7 +44,7 @@
 .block { background: repeating-linear-gradient(135deg, #1a2031, #1a2031 8px, #151a29 8px, #151a29 16px); border-color: var(--text-faint); color: var(--text-muted); }
 .free { color: var(--lime); border-style: dashed; border-color: rgb(160 248 2 / 45%); }
 
-.weekGrid { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 0.6rem; overflow-x: auto; }
+.weekGrid { display: grid; grid-template-columns: repeat(7, minmax(min(100%, 150px), 1fr)); gap: 0.6rem; overflow-x: auto; }
 .weekDay { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem; min-height: 220px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); }
 .today { border-color: var(--lime); }
 .weekHead { display: flex; justify-content: space-between; font-weight: 800; text-transform: capitalize; color: var(--text); text-decoration: none; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }

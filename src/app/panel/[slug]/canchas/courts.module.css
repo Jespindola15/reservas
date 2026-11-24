@@ -1,4 +1,4 @@
-.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); }
 
 .courtCard {
   display: flex; flex-direction: column; overflow: hidden; text-decoration: none; color: var(--text);
@@ -26,7 +26,7 @@
 .scheduleRow:last-of-type { border-bottom: 0; }
 @media (max-width: 520px) { .scheduleRow { grid-template-columns: 1fr 1fr; } .scheduleRow > :first-child { grid-column: 1 / -1; } }
 
-.images { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.6rem; }
+.images { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr)); gap: 0.6rem; }
 .imageItem { display: flex; flex-direction: column; gap: 0.4rem; }
 .imageItem img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
 .courtWrap { display: flex; flex-direction: column; gap: 0.35rem; }
