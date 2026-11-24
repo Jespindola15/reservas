@@ -119,3 +119,5 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 10px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
+.linkPlain { color: var(--text); text-decoration: none; font-weight: 600; }
+.linkPlain:hover, .linkPlain:focus-visible { color: var(--lime); text-decoration: underline; }

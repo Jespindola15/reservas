@@ -8,6 +8,8 @@ import { requireTenantPage } from "@/lib/auth/page";
 import { isAppError } from "@/lib/errors";
 import { hasPermission } from "@/modules/access/authorize";
 import { getBookingDetail } from "@/modules/booking/admin-queries";
+import { getBookingPayments, KIND_LABEL, METHOD_LABEL, PAYMENT_METHODS } from "@/modules/booking/payments";
+import { whatsappLink } from "@/lib/contact/whatsapp";
 import { formatMoney } from "@/modules/booking/pricing";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
 import { listCourtsAdmin } from "@/modules/courts/service";
@@ -19,6 +21,9 @@ import {
   rejectBookingAction,
   rescheduleBookingAction,
   saveInternalNotesAction,
+  recordPaymentAction,
+  voidPaymentAction,
+  cancelSeriesAction,
 } from "../../actions";
 import { STATUS_LABEL, actionLabel } from "../../labels";
 import styles from "./detail.module.css";
@@ -56,6 +61,13 @@ export default async function BookingDetailPage({ params, searchParams }: { para
   const started = b.startsAt <= now;
   const courts = active && canManage ? (await listCourtsAdmin(ctx)).filter((c) => c.isActive) : [];
   const local = DateTime.fromJSDate(b.startsAt, { zone: tz });
+  const pay = await getBookingPayments(ctx, b.id);
+  const canPay = hasPermission(role, "payment.record");
+  const canVoid = hasPermission(role, "payment.void");
+  const wa = whatsappLink(
+    b.customerPhone,
+    `Hola ${b.customerName.split(" ")[0]}, te escribimos de ${tenant.name} por tu turno del ${local.setLocale("es-AR").toFormat("cccc d/LL 'a las' HH:mm")} (${b.court.name}).`,
+  );
   const hidden = (
     <>
       <input type="hidden" name="bookingId" value={b.id} />
@@ -84,7 +96,10 @@ export default async function BookingDetailPage({ params, searchParams }: { para
               <dt>Cancha</dt><dd>{b.court.name}</dd>
               <dt>Fecha</dt><dd>{formatLocalDateTime(b.startsAt, tz)} a {formatLocalTime(b.endsAt, tz)}</dd>
               <dt>Duración</dt><dd>{b.durationMinutes} min</dd>
-              <dt>Importe</dt><dd>{formatMoney(b.priceAmount, b.currency)} <span className={ui.faint}>(precio congelado al reservar, no cobrado)</span></dd>
+              <dt>Importe</dt><dd>{formatMoney(b.priceAmount, b.currency)}</dd>
+              <dt>Abonado</dt><dd>{formatMoney(pay.balance.paid, b.currency)}</dd>
+              <dt>Saldo</dt><dd>{pay.balance.due === null ? "Precio a confirmar" : pay.balance.due === 0 ? <span className={`${ui.badge} ${ui.badgeCONFIRMED}`}>Saldado</span> : <strong>{formatMoney(pay.balance.due, b.currency)}</strong>}</dd>
+              {b.series ? (<><dt>Turno fijo</dt><dd>Se repite cada semana hasta el {b.series.endsOn.toISOString().slice(0, 10).split("-").reverse().join("/")}</dd></>) : null}
               <dt>Origen</dt><dd>{b.source === "ONLINE" ? "Página pública" : "Carga manual"}</dd>
               {b.status === "PENDING" && b.expiresAt ? (<><dt>Vence</dt><dd>{formatLocalDateTime(b.expiresAt, tz)}</dd></>) : null}
               {b.notes ? (<><dt>Comentario del jugador</dt><dd>{b.notes}</dd></>) : null}
@@ -172,8 +187,62 @@ export default async function BookingDetailPage({ params, searchParams }: { para
               <dt>Email</dt><dd>{b.customerEmail ?? "—"}</dd>
               <dt>Reservas totales</dt><dd>{b.customer._count.bookings}</dd>
             </dl>
-            <Link href={`/panel/${slug}/clientes/${b.customer.id}`} className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Ver ficha del cliente</Link>
+            <div className={ui.row}>
+              {wa ? <a href={wa} target="_blank" rel="noopener noreferrer" className={`${ui.button} ${ui.buttonSmall}`}>WhatsApp</a> : null}
+              <Link href={`/panel/${slug}/clientes/${b.customer.id}`} className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Ver ficha del cliente</Link>
+            </div>
           </section>
+          <section className={ui.card} aria-labelledby="pagos">
+            <div className={ui.cardHeader}><h2 id="pagos">Pagos y señas</h2><span className={ui.faint}>Registro manual</span></div>
+            {pay.payments.length ? (
+              <ul className={ui.stackSm} style={{ listStyle: "none", padding: 0, margin: "0 0 1rem" }}>
+                {pay.payments.map((p) => (
+                  <li key={p.id} className={ui.spread}>
+                    <span>
+                      <strong>{p.kind === "REFUND" ? "−" : ""}{formatMoney(p.amount, pay.currency)}</strong> · {KIND_LABEL[p.kind]} · {METHOD_LABEL[p.method]}
+                      <div className={ui.faint}>{formatLocalDateTime(p.paidAt, tz)}{p.note ? ` · ${p.note}` : ""}</div>
+                    </span>
+                    {canVoid ? (
+                      <ActionForm action={voidPaymentAction.bind(null, slug, b.id, p.id)} submitLabel="Anular" variant="ghost" small quietSuccess confirm={{ title: "¿Anular este pago?", body: "Se descuenta del total abonado. Queda registrado en el historial." }} />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className={ui.muted}>Todavía no se registraron pagos.</p>}
+            {canPay ? (
+              <ActionForm action={recordPaymentAction.bind(null, slug, b.id)} submitLabel="Registrar" variant="secondary" className={ui.stack} resetOnSuccess>
+                <div className={ui.grid2}>
+                  <label className={ui.field}><span className={ui.label}>Tipo</span>
+                    <select className={ui.select} name="kind" defaultValue={pay.balance.paid === 0 ? "DEPOSIT" : "PAYMENT"}>
+                      <option value="DEPOSIT">Seña</option><option value="PAYMENT">Pago</option>{pay.balance.paid > 0 ? <option value="REFUND">Devolución</option> : null}
+                    </select>
+                  </label>
+                  <label className={ui.field}><span className={ui.label}>Medio</span>
+                    <select className={ui.select} name="method" defaultValue="CASH">
+                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
+                    </select>
+                  </label>
+                  <label className={ui.field}><span className={ui.label}>Importe ($)</span>
+                    <input className={ui.input} name="amount" type="number" inputMode="decimal" min="0.01" step="0.01" required defaultValue={pay.balance.due ? (pay.balance.due / 100).toFixed(0) : ""} />
+                  </label>
+                  <label className={ui.field}><span className={ui.label}>Nota (opcional)</span>
+                    <input className={ui.input} name="note" maxLength={300} placeholder="Ej.: transferencia de Juan" />
+                  </label>
+                </div>
+              </ActionForm>
+            ) : null}
+          </section>
+
+          {b.series && b.series.status === "ACTIVE" && canManage ? (
+            <section className={ui.card} aria-labelledby="serie">
+              <div className={ui.cardHeader}><h2 id="serie">Turno fijo</h2></div>
+              <p className={ui.muted}>Podés cancelar solo esta fecha (arriba) o todas las fechas desde esta en adelante.</p>
+              <ActionForm action={cancelSeriesAction.bind(null, slug, b.series.id)} submitLabel="Cancelar desde esta fecha" variant="danger" small confirm={{ title: "¿Cancelar el turno fijo?", body: "Se cancelan esta reserva y todas las siguientes de la serie. Las anteriores no se tocan.", confirmLabel: "Sí, cancelar la serie" }}>
+                <input type="hidden" name="fromDate" value={local.toISODate() ?? ""} />
+              </ActionForm>
+            </section>
+          ) : null}
+
           <section className={ui.card} aria-labelledby="notas">
             <div className={ui.cardHeader}><h2 id="notas">Observaciones internas</h2></div>
             {canManage ? (

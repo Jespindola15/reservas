@@ -388,3 +388,37 @@ test("endpoints internos: tick y salud", async ({ request }) => {
   const health = await request.get("/api/health");
   expect(Object.keys(await health.json())).toEqual(["status"]);
 });
+
+// ------------------------------------------------------------------ Fase 3.1
+
+test("dueño: turno fijo semanal con revisión de fechas y pago registrado a mano", async ({ page }) => {
+  await login(page, "duenio@padel-centro.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/padel-centro");
+  await page.goto("/panel/padel-centro/reservas/fijos");
+  await expect(page.getByText("Todavía no hay turnos fijos.")).toBeVisible();
+  const start = tomorrow();
+  const end = new Date(new Date(`${start}T12:00:00Z`).getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel("Cliente").fill("Los Jueves FC");
+  await page.getByLabel("Teléfono").fill("11 4444-5555");
+  await page.getByLabel("Primera fecha").fill(start);
+  await page.getByLabel("Hasta (máx. 26 semanas)").fill(end);
+  await page.getByLabel("Hora").fill("12:00");
+  await page.getByRole("button", { name: "Revisar disponibilidad" }).click();
+  await expect(page.getByText(/Fechas \(3 libres de 3\)/)).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar turno fijo" }).click();
+  await expect(page.getByText("Turno fijo creado: 3 reserva(s).")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("cell", { name: /Los Jueves FC/ })).toBeVisible();
+
+  // Pago parcial y saldo en el detalle de una de las reservas
+  await page.goto("/panel/padel-centro/reservas?q=Los%20Jueves");
+  await page.getByRole("link", { name: /Los Jueves FC/ }).first().click();
+  await expect(page.getByRole("heading", { name: "Pagos y señas" })).toBeVisible();
+  await expect(page.getByText("Se repite cada semana")).toBeVisible();
+  await expect(page.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/5491144445555\?text=/);
+  await page.getByLabel("Importe ($)").fill("5000");
+  await page.getByRole("button", { name: "Registrar" }).click();
+  await expect(page.getByText(/Pago registrado/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Seña · Efectivo")).toBeVisible();
+});

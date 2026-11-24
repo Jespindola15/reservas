@@ -98,6 +98,8 @@ export async function getBookingDetail(ctx: TenantContext, bookingId: string) {
         expiredAt: true,
         customerId: true,
         customer: { select: { id: true, name: true, phone: true, email: true, _count: { select: { bookings: true } } } },
+        seriesId: true,
+        series: { select: { id: true, weekday: true, startMinute: true, endsOn: true, status: true } },
       },
     });
     if (!booking) throw new AppError("BOOKING_NOT_FOUND");

@@ -59,6 +59,7 @@ export default async function BookingsPage({ params, searchParams }: { params: P
               Exportar CSV
             </a>
           ) : null}
+          <Link href={`/panel/${slug}/reservas/fijos`} className={`${ui.button} ${ui.buttonSecondary}`}>Turnos fijos</Link>
           <Link href={`/panel/${slug}/calendario?nueva=1`} className={ui.button}>+ Reserva manual</Link>
         </div>
       </header>
@@ -117,7 +118,7 @@ export default async function BookingsPage({ params, searchParams }: { params: P
                       <div className={ui.faint}>hasta {formatLocalTime(b.endsAt, tenant.timezone)} · {b.code}</div>
                     </td>
                     <td>{b.court.name}</td>
-                    <td>{b.customerName}<div className={ui.faint}>{b.customerPhone}</div></td>
+                    <td><Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.linkPlain}>{b.customerName}</Link><div className={ui.faint}>{b.customerPhone}</div></td>
                     <td>{formatMoney(b.priceAmount, b.currency)}</td>
                     <td>
                       <span className={`${ui.badge} ${ui[`badge${b.status}`] ?? ""}`}>{STATUS_LABEL[b.status]}</span>

@@ -43,7 +43,7 @@ export type DayAvailability = {
 export async function getDayAvailability(
   ctx: TenantContext,
   q: { operatingDate: string; durationMinutes: number; courtId?: string },
-  opts: { now?: Date; forStaff?: boolean } = {},
+  opts: { now?: Date; forStaff?: boolean; ignoreMaxAdvance?: boolean } = {},
 ): Promise<DayAvailability> {
   const now = opts.now ?? new Date();
   return withTenant(ctx, async (tx) => {
@@ -97,7 +97,8 @@ export async function getDayAvailability(
 
     const minLead = opts.forStaff ? 0 : tenant.minLeadMinutes;
     const earliest = now.getTime() + minLead * 60_000;
-    const latest = now.getTime() + tenant.maxAdvanceDays * 86_400_000;
+    // Turnos fijos cargados por el complejo pueden ir más allá de la anticipación del público.
+    const latest = opts.forStaff && opts.ignoreMaxAdvance ? Number.POSITIVE_INFINITY : now.getTime() + tenant.maxAdvanceDays * 86_400_000;
 
     return {
       operatingDate: q.operatingDate,

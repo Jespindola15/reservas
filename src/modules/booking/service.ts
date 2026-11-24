@@ -69,6 +69,8 @@ export type CreateBookingInput = {
   notes?: string | null;
   idempotencyKey: string;
   source: BookingSource;
+  /** Reserva fija semanal a la que pertenece (solo reservas manuales). */
+  seriesId?: string | null;
 };
 
 export type BookingSummary = {
@@ -88,6 +90,8 @@ export type BookingSummary = {
 export type CreateBookingResult = { booking: BookingSummary; replayed: boolean };
 
 type Options = { now?: Date };
+/** Turnos fijos (series) pueden superar la anticipación máxima del público, hasta 26 semanas. */
+const SERIES_MAX_AHEAD_DAYS = 26 * 7 + 1;
 
 const SUMMARY_SELECT = {
   id: true,
@@ -198,6 +202,7 @@ function validateSlot(
   durationMinutes: number,
   minLeadMinutes: number,
   now: Date,
+  allowSeries = false,
 ): Slot {
   if (!court.allowedDurations.includes(durationMinutes)) throw new AppError("INVALID_DURATION");
   if (Number.isNaN(startsAt.getTime())) throw new AppError("INVALID_SLOT");
@@ -213,7 +218,7 @@ function validateSlot(
   if (!slot) throw new AppError("INVALID_SLOT");
 
   if (slot.startsAt.getTime() < now.getTime() + minLeadMinutes * 60_000) throw new AppError("SLOT_IN_PAST");
-  const maxAhead = now.getTime() + tenant.maxAdvanceDays * 86_400_000;
+  const maxAhead = now.getTime() + (allowSeries ? SERIES_MAX_AHEAD_DAYS : tenant.maxAdvanceDays) * 86_400_000;
   if (slot.startsAt.getTime() > maxAhead) throw new AppError("SLOT_TOO_FAR");
   return slot;
 }
@@ -263,7 +268,8 @@ export async function createBooking(
         const tenant = await loadTenantSettings(tx, ctx.tenantId);
         const court = await loadCourt(tx, ctx.tenantId, input.courtId, input.startsAt);
         const minLead = input.source === "ONLINE" ? tenant.minLeadMinutes : 0;
-        const slot = validateSlot(tenant, court, input.startsAt, input.durationMinutes, minLead, now);
+        const isSeries = input.source === "MANUAL" && Boolean(input.seriesId);
+        const slot = validateSlot(tenant, court, input.startsAt, input.durationMinutes, minLead, now, isSeries);
 
         await expireOverdueInTenant(tx, ctx.tenantId);
 
@@ -310,6 +316,7 @@ export async function createBooking(
             notes: input.notes?.trim() || null,
             idempotencyKey: input.idempotencyKey,
             requestFingerprint: fp,
+            seriesId: input.source === "MANUAL" ? (input.seriesId ?? null) : null,
             createdByUserId: actor.userId,
             confirmedAt: status === "CONFIRMED" ? now : null,
             expiresAt,

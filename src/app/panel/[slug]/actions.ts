@@ -179,3 +179,80 @@ export async function saveCustomerNotesAction(slug: string, customerId: string, 
     return "Observaciones guardadas.";
   });
 }
+
+// ------------------------------------------------------------- Pagos y señas
+
+export async function recordPaymentAction(slug: string, bookingId: string, _p: ActionResult, fd: FormData) {
+  return runAction("booking.payment.record", async () => {
+    const { ctx, user } = await requireTenant(slug, "payment.record");
+    const { recordPayment } = await import("@/modules/booking/payments");
+    const r = await recordPayment(ctx, { bookingId, kind: String(fd.get("kind") ?? "PAYMENT") as "PAYMENT", method: String(fd.get("method") ?? "CASH") as "CASH", amount: String(fd.get("amount") ?? ""), note: String(fd.get("note") ?? "") }, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}/reservas/${bookingId}`);
+    return r.balance.due === 0 ? "Pago registrado. La reserva quedó saldada." : "Pago registrado.";
+  });
+}
+
+export async function voidPaymentAction(slug: string, bookingId: string, paymentId: string, _p: ActionResult, _fd: FormData) {
+  return runAction("booking.payment.void", async () => {
+    const { ctx, user } = await requireTenant(slug, "payment.void");
+    const { voidPayment } = await import("@/modules/booking/payments");
+    await voidPayment(ctx, paymentId, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}/reservas/${bookingId}`);
+    return "Pago anulado (queda registrado en el historial).";
+  });
+}
+
+// --------------------------------------------------------------- Turnos fijos
+
+export type SeriesPreviewResult =
+  | { ok: true; occurrences: { date: string; startsAt: string; status: "ok" | "taken" | "closed" | "past" }[] }
+  | { ok: false; message: string };
+
+function seriesFromForm(fd: FormData) {
+  return {
+    courtId: String(fd.get("courtId") ?? ""),
+    startsOn: String(fd.get("startsOn") ?? ""),
+    endsOn: String(fd.get("endsOn") ?? ""),
+    startTime: String(fd.get("startTime") ?? ""),
+    durationMinutes: String(fd.get("durationMinutes") ?? ""),
+    customer: { name: String(fd.get("name") ?? ""), phone: String(fd.get("phone") ?? ""), email: String(fd.get("email") ?? "") },
+    notes: String(fd.get("notes") ?? ""),
+  };
+}
+
+export async function previewSeriesAction(slug: string, fd: FormData): Promise<SeriesPreviewResult> {
+  try {
+    const { ctx } = await requireTenant(slug, "booking.manage");
+    const { previewSeries } = await import("@/modules/booking/series");
+    const p = await previewSeries(ctx, seriesFromForm(fd) as never);
+    return { ok: true, occurrences: p.occurrences };
+  } catch (e) {
+    const { toPublicError } = await import("@/lib/errors");
+    return { ok: false, message: toPublicError(e).body.message };
+  }
+}
+
+export async function createSeriesAction(slug: string, _p: ActionResult, fd: FormData) {
+  return runAction("booking.series.create", async () => {
+    const { ctx, user } = await requireTenant(slug, "booking.manage");
+    const { createSeries } = await import("@/modules/booking/series");
+    const skipDates = fd.getAll("skip").map(String);
+    const r = await createSeries(ctx, { ...seriesFromForm(fd), skipDates } as never, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}/reservas/fijos`);
+    revalidatePath(`/panel/${slug}/calendario`);
+    const extra = r.failed.length ? ` ${r.failed.length} fecha(s) no se pudieron reservar porque se ocuparon mientras tanto: ${r.failed.map((f) => f.date).join(", ")}.` : "";
+    return `Turno fijo creado: ${r.created.length} reserva(s).${extra}`;
+  });
+}
+
+export async function cancelSeriesAction(slug: string, seriesId: string, _p: ActionResult, fd: FormData) {
+  return runAction("booking.series.cancel", async () => {
+    const { ctx, user } = await requireTenant(slug, "booking.manage");
+    const { cancelSeries } = await import("@/modules/booking/series");
+    const from = String(fd.get("fromDate") ?? "") || null;
+    const r = await cancelSeries(ctx, seriesId, from, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}/reservas/fijos`);
+    revalidatePath(`/panel/${slug}/calendario`);
+    return r.cancelled ? `Se cancelaron ${r.cancelled} reserva(s) del turno fijo.` : "No había reservas futuras para cancelar.";
+  });
+}

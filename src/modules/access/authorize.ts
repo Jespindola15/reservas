@@ -22,6 +22,9 @@ export const PERMISSIONS = {
   "tenant.settings": ["OWNER", "ADMIN"],
   "team.manage": ["OWNER", "ADMIN"],
   "data.export": ["OWNER", "ADMIN"],
+  "payment.record": ["OWNER", "ADMIN", "STAFF"],
+  "payment.void": ["OWNER", "ADMIN"],
+  "stats.read": ["OWNER", "ADMIN"],
 } as const satisfies Record<string, readonly MembershipRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
