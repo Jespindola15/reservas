@@ -71,6 +71,10 @@ export type CreateBookingInput = {
   source: BookingSource;
   /** Reserva fija semanal a la que pertenece (solo reservas manuales). */
   seriesId?: string | null;
+  /** Cuenta de jugador (solo reservas online con sesión verificada en el servidor). */
+  playerUserId?: string | null;
+  /** Origen de la reserva online (catálogo de TURNUP o enlace directo del complejo). */
+  origin?: "MARKETPLACE" | "DIRECT" | null;
 };
 
 export type BookingSummary = {
@@ -317,6 +321,8 @@ export async function createBooking(
             idempotencyKey: input.idempotencyKey,
             requestFingerprint: fp,
             seriesId: input.source === "MANUAL" ? (input.seriesId ?? null) : null,
+            playerUserId: input.source === "ONLINE" ? (input.playerUserId ?? null) : null,
+            origin: input.source === "ONLINE" ? (input.origin ?? "DIRECT") : null,
             createdByUserId: actor.userId,
             confirmedAt: status === "CONFIRMED" ? now : null,
             expiresAt,

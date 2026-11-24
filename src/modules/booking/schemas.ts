@@ -30,6 +30,8 @@ export const publicBookingRequestSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
   /** Campo trampa (oculto para personas). Si viene con contenido, es un bot. */
   website: z.string().max(200).optional(),
+  /** Desde dónde se reservó (estadística para el complejo; no da ningún privilegio). */
+  origin: z.enum(["MARKETPLACE", "DIRECT"]).optional(),
 });
 export type PublicBookingRequest = z.infer<typeof publicBookingRequestSchema>;
 

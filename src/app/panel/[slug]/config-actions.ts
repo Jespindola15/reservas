@@ -22,6 +22,7 @@ import {
 } from "@/modules/courts/service";
 import { updateTenantSettings } from "@/modules/tenant/settings";
 import { markOnboardingStep } from "@/modules/tenant/onboarding";
+import { replyToReview, reportReviewAsComplex } from "@/modules/player/reviews";
 import { ASSET_KINDS, addTenantAsset, deleteTenantAsset, updateBranding, type AssetKind, type BrandingInput } from "@/modules/tenant/branding";
 
 /**
@@ -62,6 +63,10 @@ function courtFromForm(fd: FormData) {
     allowedDurations: fd.getAll("allowedDurations").map(Number),
     slotStepMinutes: Number(fd.get("slotStepMinutes") ?? 30),
     basePrice: pesosToCents(fd.get("basePrice")),
+    surface: (String(fd.get("surface") ?? "") || null) as "SINTETICO" | null,
+    dimensions: String(fd.get("dimensions") ?? ""),
+    covered: fd.get("covered") === "si" ? true : fd.get("covered") === "no" ? false : null,
+    lighting: fd.get("lighting") === "on",
   };
 }
 
@@ -345,6 +350,12 @@ export async function updateBrandingAction(slug: string, _p: ActionResult, fd: F
         services: fd.getAll("services").map(String) as BrandingInput["services"],
         cancellationPolicy: String(fd.get("cancellationPolicy") ?? ""),
         publicListed: fd.get("publicListed") === "on",
+        city: String(fd.get("city") ?? ""),
+        depositType: String(fd.get("depositType") ?? "NONE") as "NONE",
+        depositValue: String(fd.get("depositValue") ?? "0"),
+        depositNote: String(fd.get("depositNote") ?? ""),
+        announcement: String(fd.get("announcement") ?? ""),
+        announcementUntil: String(fd.get("announcementUntil") ?? ""),
       },
       actorOf(user.id),
     );
@@ -386,5 +397,26 @@ export async function markOnboardingStepAction(slug: string, step: number, _p: A
     await markOnboardingStep(ctx, step, actorOf(user.id));
     revalidatePath(`/panel/${slug}`, "layout");
     return step === 7 ? "¡Listo! Tu complejo ya está en marcha." : "Paso marcado como hecho.";
+  });
+}
+
+// ---------------------------------------------------------------------- Opiniones
+
+export async function replyReviewAction(slug: string, reviewId: string, _p: ActionResult, fd: FormData) {
+  return runAction("review.reply", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    await replyToReview(ctx, reviewId, String(fd.get("reply") ?? ""), actorOf(user.id));
+    revalidatePath(`/panel/${slug}/opiniones`);
+    revalidatePath(`/${slug}`);
+    return "Respuesta publicada.";
+  });
+}
+
+export async function reportReviewComplexAction(slug: string, reviewId: string, _p: ActionResult, fd: FormData) {
+  return runAction("review.report", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    await reportReviewAsComplex(ctx, reviewId, String(fd.get("reason") ?? ""), actorOf(user.id));
+    revalidatePath(`/panel/${slug}/opiniones`);
+    return "Denuncia enviada: el equipo de TURNUP la revisará.";
   });
 }

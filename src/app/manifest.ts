@@ -1,13 +1,16 @@
 import type { MetadataRoute } from "next";
 
-/** Manifest de la PWA. La app instalada abre el panel; los jugadores siguen usando el link del complejo. */
+/**
+ * Manifest de la PWA. La app instalada abre la plataforma de jugadores (inicio); el equipo de un
+ * complejo llega a su panel con el atajo "Panel del complejo" o desde Perfil.
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: "/panel",
+    id: "/",
     name: "TURNUP — Reservas de fútbol y pádel",
     short_name: "TURNUP",
     description: "Gestioná las reservas de tu complejo y reservá canchas de fútbol y pádel.",
-    start_url: "/panel?source=pwa",
+    start_url: "/?source=pwa",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
@@ -23,8 +26,9 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
     ],
     shortcuts: [
-      { name: "Calendario", url: "/panel?ir=calendario", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Reservas", url: "/panel?ir=reservas", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Reservar cancha", url: "/explorar", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Mis turnos", url: "/mis-turnos", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Calendario del complejo", url: "/panel?ir=calendario", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

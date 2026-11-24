@@ -123,6 +123,7 @@ export default async function PublicPageSettings({ params }: { params: Promise<{
             <label className={ui.field}><span className={ui.label}>Instagram</span><input className={ui.input} name="instagram" maxLength={80} defaultValue={b.instagram ?? ""} placeholder="@tucomplejo" /></label>
             <label className={ui.field}><span className={ui.label}>Facebook</span><input className={ui.input} name="facebook" maxLength={80} defaultValue={b.facebook ?? ""} placeholder="tucomplejo" /></label>
             <label className={ui.field}><span className={ui.label}>Sitio web</span><input className={ui.input} type="url" name="website" maxLength={200} defaultValue={b.website ?? ""} placeholder="https://" /></label>
+            <label className={ui.field}><span className={ui.label}>Ciudad</span><input className={ui.input} name="city" maxLength={80} defaultValue={b.city ?? ""} placeholder="Ej.: Rosario" /><span className={ui.hint}>Los jugadores filtran por ciudad en el catálogo.</span></label>
           </div>
         </section>
         <section className={ui.card}>
@@ -132,6 +133,31 @@ export default async function PublicPageSettings({ params }: { params: Promise<{
               <label key={s} className={ui.checkbox}><input type="checkbox" name="services" value={s} defaultChecked={b.services.includes(s)} />{s}</label>
             ))}
           </div>
+        </section>
+        <section className={ui.card}>
+          <div className={ui.cardHeader}><h2>Seña</h2></div>
+          <div className={ui.grid3}>
+            <label className={ui.field}><span className={ui.label}>Condición</span>
+              <select className={ui.select} name="depositType" defaultValue={b.depositType}>
+                <option value="NONE">Sin seña</option><option value="PERCENT">Porcentaje del turno</option><option value="FIXED">Monto fijo</option>
+              </select>
+            </label>
+            <label className={ui.field}><span className={ui.label}>Valor (% o $)</span>
+              <input className={ui.input} name="depositValue" type="number" min={0} step="any" defaultValue={b.depositType === "FIXED" ? b.depositValue / 100 : b.depositValue} />
+            </label>
+            <label className={ui.field}><span className={ui.label}>Cómo se paga</span>
+              <input className={ui.input} name="depositNote" maxLength={300} defaultValue={b.depositNote ?? ""} placeholder="Ej.: transferencia al alias complejo.mp" />
+            </label>
+          </div>
+          <span className={ui.hint}>Se muestra en el resumen de la reserva (seña y saldo). TURNUP no cobra online: registrás la seña a mano en la reserva.</span>
+        </section>
+        <section className={ui.card}>
+          <div className={ui.cardHeader}><h2>Novedad o promoción</h2></div>
+          <div className={ui.grid2}>
+            <label className={ui.field}><span className={ui.label}>Texto (opcional)</span><input className={ui.input} name="announcement" maxLength={200} defaultValue={b.announcement ?? ""} placeholder="Ej.: 20 % off en turnos de 10 a 16 h de lunes a jueves" /></label>
+            <label className={ui.field}><span className={ui.label}>Válida hasta</span><input className={ui.input} type="date" name="announcementUntil" defaultValue={b.announcementUntil ? b.announcementUntil.toISOString().slice(0, 10) : ""} /></label>
+          </div>
+          <span className={ui.hint}>Aparece en el inicio de la app de jugadores mientras esté vigente. Publicá solo promociones reales.</span>
         </section>
         <section className={ui.card}>
           <div className={ui.cardHeader}><h2>Política de cancelación</h2></div>
@@ -144,7 +170,7 @@ export default async function PublicPageSettings({ params }: { params: Promise<{
         <section className={ui.card}>
           <label className={ui.checkbox}>
             <input type="checkbox" name="publicListed" defaultChecked={b.publicListed} />
-            Mostrar mi complejo en el listado de la portada de TURNUP
+            Publicar mi complejo en el catálogo de TURNUP (si lo desactivás, tu enlace directo sigue funcionando)
           </label>
         </section>
       </ActionForm>

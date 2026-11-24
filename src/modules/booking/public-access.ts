@@ -113,3 +113,52 @@ export async function cancelBookingPublic(slug: string, code: string, token: str
     throw mapDbError(e);
   }
 }
+
+/**
+ * Vincula una reserva hecha como invitado a la cuenta del jugador. La titularidad se prueba
+ * con el ENLACE PRIVADO (código + token HMAC) que solo recibió quien reservó. Nunca se
+ * vincula por coincidencia de email o teléfono.
+ */
+export async function claimBookingByLink(userId: string, slug: string, code: string, token: string) {
+  const { ctx, booking: b } = await loadByCode(slug, code, token);
+  await withTenant(ctx, async (tx) => {
+    const current = await tx.booking.findUnique({ where: { id: b.id }, select: { playerUserId: true } });
+    if (current?.playerUserId && current.playerUserId !== userId) throw new AppError("BOOKING_OWNED");
+    if (current?.playerUserId === userId) return;
+    const res = await tx.booking.updateMany({ where: { id: b.id, tenantId: ctx.tenantId, playerUserId: null }, data: { playerUserId: userId } });
+    if (res.count !== 1) throw new AppError("BOOKING_OWNED");
+    await audit(tx, { tenantId: ctx.tenantId, actor: { type: "USER", userId }, action: "booking.claimed_by_player", entityType: "booking", entityId: b.id, metadata: {} });
+  });
+  return { code: b.code };
+}
+
+/**
+ * Cancelación desde "Mis turnos". La propiedad ya la verificó el llamador (la reserva
+ * salió de app_player_bookings con app.player_id = el usuario de la sesión); acá se
+ * vuelve a comprobar dentro del complejo y se aplican las MISMAS reglas que con el enlace.
+ */
+export async function cancelBookingAsPlayer(tenantId: string, bookingId: string, userId: string, now: Date = new Date()) {
+  const ctx = { tenantId, userId: null };
+  try {
+    await withTenant(ctx, async (tx) => {
+      const b = await tx.booking.findFirst({
+        where: { id: bookingId, tenantId, playerUserId: userId },
+        select: { id: true, status: true, startsAt: true, expiresAt: true, tenant: { select: { publicCancellationMinutes: true, status: true } } },
+      });
+      if (!b) throw new AppError("BOOKING_NOT_FOUND");
+      if (b.tenant.status !== "ACTIVE") throw new AppError("TENANT_SUSPENDED");
+      if (b.status !== "PENDING" && b.status !== "CONFIRMED") throw new AppError("BOOKING_CLOSED");
+      if (b.status === "PENDING" && b.expiresAt && b.expiresAt <= now) throw new AppError("BOOKING_EXPIRED");
+      if (now >= new Date(b.startsAt.getTime() - b.tenant.publicCancellationMinutes * 60_000)) throw new AppError("CANCELLATION_WINDOW_CLOSED");
+      const res = await tx.booking.updateMany({
+        where: { id: b.id, tenantId, status: { in: ["PENDING", "CONFIRMED"] } },
+        data: { status: "CANCELLED", cancelledAt: now, cancelReason: "Cancelada por el jugador", version: { increment: 1 } },
+      });
+      if (res.count !== 1) throw new AppError("BOOKING_CLOSED");
+      await audit(tx, { tenantId, actor: { type: "USER", userId }, action: "booking.player_cancelled", entityType: "booking", entityId: b.id, metadata: { from: b.status } });
+      await enqueueBookingEvent(tx, tenantId, b.id, { type: "cancelled", by: "player" });
+    });
+  } catch (e) {
+    throw mapDbError(e);
+  }
+}

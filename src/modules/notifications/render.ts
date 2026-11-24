@@ -132,11 +132,17 @@ export async function renderNotification(tx: Tx, n: RenderInput, now: Date): Pro
     where: { id: n.bookingId, tenantId: n.tenantId },
     select: {
       id: true, code: true, status: true, startsAt: true, endsAt: true, durationMinutes: true, priceAmount: true,
-      currency: true, customerName: true, expiresAt: true,
+      currency: true, customerName: true, expiresAt: true, playerUserId: true,
       court: { select: { name: true, sport: true } },
     },
   });
   if (!b) return { send: false, reason: "booking_missing" };
+  // Preferencias del jugador con cuenta (los invitados reciben solo los avisos que el complejo tenga activos).
+  if (isPlayer && b.playerUserId) {
+    const pref = await tx.playerProfile.findUnique({ where: { userId: b.playerUserId }, select: { notifyEmail: true, notifyReminders: true } });
+    if (pref && !pref.notifyEmail) return { send: false, reason: "player_opted_out" };
+    if (pref && n.kind === "booking_reminder" && !pref.notifyReminders) return { send: false, reason: "player_no_reminders" };
+  }
 
   const when = `${formatLocalDateTime(b.startsAt, tz)} a ${formatLocalTime(b.endsAt, tz)}`;
   const rows: [string, string][] = [

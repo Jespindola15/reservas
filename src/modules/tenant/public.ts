@@ -20,6 +20,7 @@ export async function getPublicTenantProfile(slug: string) {
     const tenant = await tx.tenant.findUniqueOrThrow({
       where: { id: ctx.tenantId },
       select: {
+        id: true,
         slug: true,
         name: true,
         description: true,
@@ -38,6 +39,10 @@ export async function getPublicTenantProfile(slug: string) {
         services: true,
         cancellationPolicy: true,
         publicCancellationMinutes: true,
+        city: true,
+        depositType: true,
+        depositValue: true,
+        depositNote: true,
       },
     });
     const assets = await tx.tenantAsset.findMany({
@@ -61,6 +66,10 @@ export async function getPublicTenantProfile(slug: string) {
         description: true,
         allowedDurations: true,
         capacity: true,
+        surface: true,
+        dimensions: true,
+        covered: true,
+        lighting: true,
         images: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 1 },
       },
     });

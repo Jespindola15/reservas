@@ -82,3 +82,21 @@ export async function withSystem<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     return fn(tx);
   }, TX_OPTIONS);
 }
+
+/**
+ * Contexto de JUGADOR: solo fija app.player_id (y app.user_id). Las políticas RLS de
+ * player_profiles / player_favorites y las funciones app_player_* filtran por esa variable.
+ * No da acceso a ningún complejo (app.tenant_id queda vacío). Solo lo arma el servidor a
+ * partir de la sesión verificada.
+ */
+export async function withPlayer<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  assertUuid(userId, "userId");
+  await assertDbSafety();
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('TimeZone', 'UTC', true),
+                              set_config('app.tenant_id', '', true),
+                              set_config('app.player_id', ${userId}, true),
+                              set_config('app.user_id', ${userId}, true)`;
+    return fn(tx);
+  }, TX_OPTIONS);
+}

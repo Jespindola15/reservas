@@ -7,12 +7,12 @@ import { authClient } from "@/lib/auth/client";
 import ui from "@/components/ui.module.css";
 
 /** Solo acepta destinos internos (evita redirecciones abiertas). */
-function safeNext(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return "/panel";
+function safeNext(next: string | null, fallback: string): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return fallback;
   return next;
 }
 
-export function LoginForm({ next }: { next: string | null }) {
+export function LoginForm({ next, fallback = "/panel" }: { next: string | null; fallback?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -21,7 +21,7 @@ export function LoginForm({ next }: { next: string | null }) {
   const [useBackup, setUseBackup] = useState(false);
 
   function done() {
-    router.replace(safeNext(next));
+    router.replace(safeNext(next, fallback));
     router.refresh();
   }
 

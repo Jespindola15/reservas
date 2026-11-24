@@ -178,6 +178,16 @@ async function loadPeriod(ctx: TenantContext, tz: string, range: Range) {
       where: { tenantId: ctx.tenantId, date: { gte: stringToDbDate(range.from), lte: stringToDbDate(range.to) } },
       select: { courtId: true, date: true, kind: true, openMinute: true, closeMinute: true },
     });
+    const views = await tx.tenantDailyView.aggregate({
+      where: { tenantId: ctx.tenantId, day: { gte: stringToDbDate(range.from), lte: stringToDbDate(range.to) } },
+      _sum: { views: true },
+    });
+    // Reservas online CREADAS en el período, por origen (catálogo de TURNUP vs. enlace directo).
+    const byOrigin = await tx.booking.groupBy({
+      by: ["origin"],
+      where: { tenantId: ctx.tenantId, source: "ONLINE", createdAt: { gte: from, lt: to } },
+      _count: { _all: true },
+    });
     const bookings = await tx.booking.findMany({
       where: { tenantId: ctx.tenantId, startsAt: { gte: from, lt: to } },
       select: { id: true, status: true, courtId: true, customerId: true, startsAt: true, durationMinutes: true, priceAmount: true },
@@ -215,7 +225,7 @@ async function loadPeriod(ctx: TenantContext, tz: string, range: Range) {
       return { id: c.id, name: c.name, openMinutes: open };
     });
 
-    return computeStats({
+    const base = computeStats({
       tz,
       bookings,
       paymentsInRange,
@@ -224,6 +234,15 @@ async function loadPeriod(ctx: TenantContext, tz: string, range: Range) {
       firstBookingAt: new Map(firsts.map((f) => [f.customerId, f._min.startsAt!])),
       rangeStart: from,
     });
+    const count = (o: string | null) => byOrigin.find((b) => b.origin === o)?._count._all ?? 0;
+    return {
+      ...base,
+      marketplace: {
+        profileViews: views._sum.views ?? 0,
+        onlineFromMarketplace: count("MARKETPLACE"),
+        onlineDirect: count("DIRECT") + count(null),
+      },
+    };
   });
 }
 

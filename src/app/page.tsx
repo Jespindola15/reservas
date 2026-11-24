@@ -1,94 +1,124 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
-import { TopBar } from "@/components/TopBar";
+import { ComplexCard, SPORT_LABEL } from "@/components/player/ComplexCard";
+import { PlayerShell } from "@/components/player/PlayerShell";
+import styles from "@/components/player/player.module.css";
 import ui from "@/components/ui.module.css";
-import { logger } from "@/lib/logger";
-import { listPublicDirectory, type DirectoryEntry } from "@/modules/tenant/branding";
-import styles from "./home.module.css";
+import { getCurrentUser } from "@/lib/auth/dal";
+import { cachedAnnouncements, cachedCatalog } from "@/modules/marketplace/cached";
+import { catalogCities, SPORT_GROUP_LABEL } from "@/modules/marketplace/catalog";
+import { getPlayerProfile } from "@/modules/player/account";
+import { listPlayerBookings } from "@/modules/player/bookings";
+import { listFavoriteTenantIds } from "@/modules/player/favorites";
 
-// El listado se guarda en caché 10 minutos (y se invalida al cambiar la página de
-// un complejo): la portada no consulta la base en cada visita ni la mantiene despierta.
-// Solo contiene datos públicos, iguales para todos los visitantes.
-const cachedDirectory = unstable_cache(() => listPublicDirectory(60), ["public-directory"], { revalidate: 600, tags: ["public-directory"] });
-
-const SPORT: Record<string, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otros" };
-
-async function directory(): Promise<DirectoryEntry[]> {
-  try {
-    return await cachedDirectory();
-  } catch (e) {
-    // Sin base (p. ej. durante el build) la portada igual se muestra.
-    logger.warn("home.directory.unavailable", { err: e instanceof Error ? e.message : String(e) });
-    return [];
-  }
-}
-
-const FEATURES = [
-  { t: "Cero turnos duplicados", d: "La base de datos garantiza que una cancha nunca se reserve dos veces, aunque 100 personas reserven al mismo tiempo." },
-  { t: "Tu página de reservas", d: "Cada complejo tiene su página: deporte, cancha, fecha, horario y precio real antes de confirmar." },
-  { t: "Calendario del día", d: "Columnas por cancha, estados con color, bloqueos y carga manual en un toque, desde la compu o el celular." },
-  { t: "Solicitudes que vencen solas", d: "Si no aprobás una solicitud a tiempo, el turno se libera automáticamente." },
-];
+export const metadata: Metadata = {
+  title: "TURNUP — Encontrá dónde jugar fútbol y pádel",
+  description: "Buscá complejos, mirá horarios libres y reservá tu cancha en segundos.",
+};
 
 export default async function Home() {
-  const complexes = await directory();
+  const user = await getCurrentUser().catch(() => null);
+  const [catalog, news] = await Promise.all([cachedCatalog(), cachedAnnouncements()]);
+  const [profile, bookings, favIds] = user
+    ? await Promise.all([getPlayerProfile(user.id), listPlayerBookings(user.id), listFavoriteTenantIds(user.id)])
+    : [null, [], [] as string[]];
+  const now = new Date();
+  const next = bookings.filter((b) => (b.status === "CONFIRMED" || b.status === "PENDING") && b.endsAt > now).sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+  const favorites = catalog.filter((c) => favIds.includes(c.id));
+  const city = profile?.city ?? null;
+  // Destacados: primero los de la ciudad del jugador, luego los mejor valorados (solo valoraciones reales).
+  const featured = [...catalog]
+    .sort((a, b) => Number(Boolean(city && b.city === city)) - Number(Boolean(city && a.city === city)) || (b.ratingAvg ?? 0) - (a.ratingAvg ?? 0) || b.ratingCount - a.ratingCount)
+    .slice(0, 8);
+  const cities = catalogCities(catalog);
+
   return (
-    <>
-      <TopBar>
-        <Link href="/login" className={`${ui.button} ${ui.buttonSmall}`}>Ingresar</Link>
-      </TopBar>
-      <main>
-        <section className={styles.hero}>
-          <div className={ui.container}>
-            <p className={ui.eyebrow}>Fútbol 5 · 7 · 11 · Pádel</p>
-            <h1 className={styles.title}>
-              Llená tus canchas.<br />
-              <span>Sin planillas, sin superposiciones.</span>
-            </h1>
-            <p className={styles.lead}>
-              TURNUP es la plataforma para complejos deportivos: reservas online, calendario, precios por franja y
-              clientes, en un solo lugar.
-            </p>
-            <div className={ui.row}>
-              <Link href="/login" className={ui.button}>Ingresar al panel</Link>
-              {complexes.length ? <a href="#complejos" className={`${ui.button} ${ui.buttonSecondary}`}>Ver complejos para reservar</a> : null}
-            </div>
-          </div>
-        </section>
-        {complexes.length ? (
-          <section id="complejos" className={`${ui.container} ${styles.directory}`} aria-labelledby="complejos-titulo">
-            <h2 id="complejos-titulo">Complejos para reservar</h2>
-            <p className={ui.muted}>Elegí un complejo y reservá online, sin crear cuenta.</p>
-            <ul className={styles.dirGrid}>
-              {complexes.map((c) => (
-                <li key={c.slug}>
-                  <Link href={`/${c.slug}`} className={styles.dirCard}>
-                    {c.logoAssetId ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={`/api/public/${c.slug}/assets/${c.logoAssetId}`} alt="" width={56} height={56} className={styles.dirLogo} loading="lazy" />
-                    ) : (
-                      <span className={styles.dirLogo} aria-hidden>{c.name.slice(0, 1).toUpperCase()}</span>
-                    )}
-                    <span className={styles.dirText}>
-                      <strong>{c.name}</strong>
-                      {c.address ? <span className={ui.faint}>{c.address}</span> : null}
-                      <span className={ui.muted}>{c.sports.map((s) => SPORT[s] ?? s).join(" · ")} · {c.courtCount} {c.courtCount === 1 ? "cancha" : "canchas"}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
+    <PlayerShell user={user}>
+      <p className={ui.eyebrow}>Fútbol · Pádel</p>
+      <h1 className={styles.hello}>{user ? `Hola, ${user.name.split(" ")[0]}` : "¿Dónde jugamos hoy?"}</h1>
+      <p className={ui.muted} style={{ margin: 0 }}>Encontrá cancha, mirá los horarios libres y reservá en segundos.</p>
+
+      <form action="/explorar" method="get" className={styles.searchRow} role="search" aria-label="Buscar complejos">
+        <label className="sr-only" htmlFor="q">Buscar complejo</label>
+        <input id="q" name="q" className={ui.input} placeholder="Buscar complejo o zona" maxLength={80} style={{ flex: 2 }} />
+        {cities.length > 1 ? (
+          <>
+            <label className="sr-only" htmlFor="ciudad">Ciudad</label>
+            <select id="ciudad" name="ciudad" className={ui.select} defaultValue={city && cities.includes(city) ? city : ""} style={{ flex: 1 }}>
+              <option value="">Todas las ciudades</option>
+              {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </>
         ) : null}
-        <section className={`${ui.container} ${styles.features}`}>
-          {FEATURES.map((f) => (
-            <article key={f.t} className={ui.card}>
-              <h2>{f.t}</h2>
-              <p className={ui.muted}>{f.d}</p>
-            </article>
-          ))}
+        <button className={ui.button} type="submit">Buscar</button>
+      </form>
+      <div className={styles.chips} style={{ marginTop: "0.6rem" }} aria-label="Deportes">
+        {Object.entries(SPORT_GROUP_LABEL).filter(([k]) => k !== "otros" || catalog.some((c) => c.sports.includes("OTHER"))).map(([k, v]) => (
+          <Link key={k} href={`/explorar?deporte=${k}`} className={styles.chip}>{v}</Link>
+        ))}
+      </div>
+
+      {next ? (
+        <section className={styles.section} aria-labelledby="proxima">
+          <div className={styles.sectionHead}><h2 id="proxima">Tu próximo turno</h2><Link href="/mis-turnos">Ver todos</Link></div>
+          <Link href="/mis-turnos" className={styles.next}>
+            <span className={styles.nextDate}>
+              <small>{next.startsAt.toLocaleDateString("es-AR", { weekday: "short", timeZone: next.tenantTimezone })}</small>
+              {next.startsAt.toLocaleDateString("es-AR", { day: "numeric", timeZone: next.tenantTimezone })}
+            </span>
+            <span>
+              <strong>{next.tenantName}</strong>
+              <span className={styles.meta} style={{ display: "block" }}>
+                {next.startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: next.tenantTimezone })} hs · {next.courtName} · {SPORT_LABEL[next.sport] ?? next.sport}
+              </span>
+              {next.status === "PENDING" ? <span className={styles.badge}>Esperando confirmación</span> : null}
+            </span>
+          </Link>
         </section>
-      </main>
-    </>
+      ) : null}
+
+      <section className={styles.section}>
+        <Link href="/explorar" className={styles.cta}>Reservar una cancha</Link>
+      </section>
+
+      {favorites.length ? (
+        <section className={styles.section} aria-labelledby="favoritos">
+          <div className={styles.sectionHead}><h2 id="favoritos">Tus favoritos</h2></div>
+          <ul className={styles.rail}>{favorites.map((c) => <li key={c.id}><ComplexCard c={c} favorite /></li>)}</ul>
+        </section>
+      ) : null}
+
+      {news.length ? (
+        <section className={styles.section} aria-labelledby="novedades">
+          <div className={styles.sectionHead}><h2 id="novedades">Novedades y promociones</h2></div>
+          <ul className={styles.turns}>
+            {news.map((n) => (
+              <li key={n.slug}>
+                <Link href={`/${n.slug}?desde=marketplace`} className={styles.turn} style={{ textDecoration: "none", color: "inherit" }}>
+                  <strong>{n.name}{n.city ? <span className={styles.meta}> · {n.city}</span> : null}</strong>
+                  <span>{n.text}</span>
+                  {n.until ? <span className={styles.meta}>Válido hasta el {n.until.toISOString().slice(0, 10).split("-").reverse().join("/")}</span> : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className={styles.section} aria-labelledby="destacados">
+        <div className={styles.sectionHead}><h2 id="destacados">Complejos destacados</h2><Link href="/explorar">Explorar todos</Link></div>
+        {featured.length ? (
+          <ul className={styles.rail}>{featured.map((c) => <li key={c.id}><ComplexCard c={c} favorite={favIds.includes(c.id)} /></li>)}</ul>
+        ) : (
+          <p className={styles.empty}>Todavía no hay complejos publicados. ¡Volvé pronto!</p>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <p className={ui.faint} style={{ textAlign: "center" }}>
+          ¿Tenés un complejo? <Link href="/para-complejos">Conocé TURNUP para complejos</Link>
+        </p>
+      </section>
+    </PlayerShell>
   );
 }

@@ -9,7 +9,7 @@
  * La confirmación de una reserva depende siempre del servidor y de PostgreSQL; sin conexión no se
  * puede reservar ni confirmar nada.
  */
-const VERSION = "turnup-v2"; // v2: nueva identidad visual (íconos nuevos)
+const VERSION = "turnup-v3"; // v3: plataforma de jugadores
 const STATIC_CACHE = `${VERSION}-static`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const OFFLINE_URL = "/offline";

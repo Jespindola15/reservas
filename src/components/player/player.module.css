@@ -1,0 +1,72 @@
+/* Plataforma de jugadores: mobile-first, negro + blanco + verde lima. */
+.shell { min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.top { position: sticky; top: 0; z-index: 20; background: rgb(5 7 13 / 88%); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.topInner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; max-width: 1100px; margin: 0 auto; padding: 0.6rem 1rem; min-height: 56px; }
+.topActions { display: flex; align-items: center; gap: 0.6rem; }
+.signIn { display: inline-flex; align-items: center; min-height: 40px; padding: 0 1rem; border-radius: 999px; background: var(--lime); color: var(--on-lime); font-weight: 800; text-decoration: none; }
+.avatarLink { display: inline-flex; text-decoration: none; border-radius: 50%; }
+.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--lime); color: var(--on-lime); font-weight: 900; }
+.main, .mainWide { flex: 1; width: 100%; margin: 0 auto; padding: 1rem 1rem calc(88px + env(safe-area-inset-bottom)); }
+.main { max-width: 760px; }
+.mainWide { max-width: 1100px; }
+
+.bottomNav {
+  position: fixed; inset: auto 0 0 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr);
+  padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom)); background: rgb(10 15 28 / 96%);
+  border-top: 1px solid var(--border); backdrop-filter: blur(10px);
+}
+.navItem, .navActive { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 54px; border-radius: 12px; text-decoration: none; color: var(--text-muted); font-size: 0.72rem; font-weight: 700; }
+.navActive { color: var(--lime); }
+.navItem:focus-visible, .navActive:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+@media (min-width: 900px) {
+  .bottomNav { position: sticky; top: 56px; inset: auto; order: -1; grid-template-columns: repeat(4, max-content); justify-content: center; gap: 0.5rem; padding: 0.3rem; border-top: 0; border-bottom: 1px solid var(--border); }
+  .navItem, .navActive { flex-direction: row; gap: 0.45rem; min-height: 42px; padding: 0 1rem; font-size: 0.9rem; }
+  .main, .mainWide { padding-bottom: 2rem; }
+}
+
+/* Bloques comunes */
+.hello { margin: 0.4rem 0 0.2rem; font-size: clamp(1.5rem, 5vw, 2.1rem); font-weight: 900; letter-spacing: -0.02em; }
+.section { margin-top: 1.5rem; }
+.sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.6rem; }
+.sectionHead h2 { margin: 0; font-size: 1.15rem; }
+.sectionHead a { color: var(--lime); font-weight: 700; text-decoration: none; font-size: 0.9rem; }
+.searchRow { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+.searchRow input, .searchRow select { min-height: 48px; }
+.chips { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.15rem 0 0.4rem; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip, .chipOn { flex: none; display: inline-flex; align-items: center; min-height: 40px; padding: 0 1rem; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
+.chipOn { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+
+/* Tarjetas de complejo */
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.rail { list-style: none; margin: 0; padding: 0 0 0.4rem; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 78%); gap: 0.8rem; overflow-x: auto; scroll-snap-type: x mandatory; }
+.rail > li { scroll-snap-align: start; }
+@media (min-width: 700px) { .rail { grid-auto-columns: minmax(260px, 32%); } }
+.card { position: relative; display: flex; flex-direction: column; height: 100%; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
+.card:hover, .card:focus-visible { border-color: var(--lime); }
+.cardCover { aspect-ratio: 16 / 9; width: 100%; object-fit: cover; background: linear-gradient(135deg, var(--surface-3), var(--bg-2)); display: block; }
+.cardBody { display: flex; gap: 0.7rem; padding: 0.75rem; align-items: flex-start; }
+.cardLogo { width: 44px; height: 44px; flex: none; border-radius: 12px; object-fit: cover; display: grid; place-items: center; background: var(--lime); color: var(--on-lime); font-weight: 900; margin-top: -30px; box-shadow: 0 0 0 3px var(--surface); }
+.cardText { min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.cardText strong { font-size: 1rem; overflow-wrap: anywhere; }
+.meta { color: var(--text-muted); font-size: 0.82rem; }
+.rating { color: var(--lime); font-weight: 800; }
+.price { font-weight: 800; }
+.badgeRow { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
+.badge { padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--surface-3); color: var(--text); font-size: 0.72rem; font-weight: 700; }
+.badgeLime { padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--lime-soft); color: var(--lime); font-size: 0.72rem; font-weight: 800; }
+
+/* Próxima reserva */
+.next { display: flex; gap: 0.9rem; align-items: center; padding: 1rem; border-radius: var(--radius-lg); background: linear-gradient(135deg, rgb(160 248 2 / 16%), var(--surface)); border: 1px solid rgb(160 248 2 / 35%); color: var(--text); text-decoration: none; }
+.nextDate { flex: none; width: 58px; text-align: center; border-radius: 12px; background: var(--lime); color: var(--on-lime); padding: 0.4rem 0; font-weight: 900; line-height: 1.1; }
+.nextDate small { display: block; font-size: 0.7rem; text-transform: uppercase; }
+.empty { padding: 1.2rem; border-radius: var(--radius-lg); border: 1px dashed var(--border); color: var(--text-muted); text-align: center; }
+.cta { display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: var(--lime); color: var(--on-lime); font-weight: 900; text-decoration: none; font-size: 1.05rem; }
+
+/* Lista de turnos */
+.turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.turn { padding: 0.9rem; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.4rem; }
+.turnHead { display: flex; justify-content: space-between; gap: 0.6rem; align-items: flex-start; }
+.turnActions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.3rem; }
+.stars { display: inline-flex; gap: 0.15rem; }
+.tabs { display: flex; gap: 0.4rem; margin: 0.8rem 0; }

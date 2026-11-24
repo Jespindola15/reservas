@@ -28,6 +28,9 @@ export const ERROR_CATALOG = {
   LIMIT_REACHED: { status: 422, message: "Se alcanzó el máximo permitido para este elemento." },
   INVALID_LINK: { status: 404, message: "El enlace no es válido o la reserva no existe." },
   CANCELLATION_WINDOW_CLOSED: { status: 409, message: "Ya no se puede cancelar online. Comunicate con el complejo." },
+  EMAIL_TAKEN: { status: 409, message: "Ya existe una cuenta con ese email. Iniciá sesión o recuperá tu contraseña." },
+  BOOKING_OWNED: { status: 409, message: "Esa reserva ya está vinculada a otra cuenta." },
+  REVIEW_NOT_ALLOWED: { status: 422, message: "Solo podés opinar sobre turnos que jugaste en los últimos 90 días, una vez por reserva." },
   RATE_LIMITED: { status: 429, message: "Demasiados intentos. Esperá un momento y volvé a probar." },
   INTERNAL: { status: 500, message: "Ocurrió un error inesperado. Intentá nuevamente." },
 } as const;

@@ -140,6 +140,15 @@ export default async function StatsPage({ params, searchParams }: { params: Prom
         </div></div>
       </section>
 
+      <section className={ui.card} aria-labelledby="marketplace" style={{ marginBottom: "1rem" }}>
+        <div className={ui.cardHeader}><h2 id="marketplace">Marketplace de TURNUP</h2></div>
+        <div className={styles.kpis} style={{ marginBottom: 0 }}>
+          <div className={ui.stat}><span className={ui.statLabel}>Visitas a tu ficha</span><span className={ui.statValue}>{s.marketplace.profileViews}</span><Delta curr={s.marketplace.profileViews} prev={p.marketplace.profileViews} /></div>
+          <div className={ui.stat}><span className={ui.statLabel}>Reservas desde el catálogo</span><span className={ui.statValue}>{s.marketplace.onlineFromMarketplace}</span><span className={ui.statHint}>Creadas en el período</span></div>
+          <div className={ui.stat}><span className={ui.statLabel}>Reservas por tu enlace</span><span className={ui.statValue}>{s.marketplace.onlineDirect}</span><span className={ui.statHint}>Enlace directo o QR</span></div>
+        </div>
+      </section>
+
       <div className={styles.grid}>
         <section className={ui.card} aria-labelledby="horas">
           <div className={ui.cardHeader}><h2 id="horas">Turnos por hora de inicio</h2></div>

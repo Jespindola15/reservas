@@ -1,18 +1,34 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ui from "@/components/ui.module.css";
 import styles from "./public.module.css";
 
-type Sport = "FOOTBALL_5" | "FOOTBALL_7" | "FOOTBALL_11" | "PADEL";
-type CourtInfo = { id: string; name: string; sport: Sport; description: string | null; capacity: number | null; durations: number[]; imageId: string | null };
+type Sport = "FOOTBALL_5" | "FOOTBALL_7" | "FOOTBALL_8" | "FOOTBALL_11" | "PADEL" | "OTHER";
+type CourtInfo = {
+  id: string; name: string; sport: Sport; description: string | null; capacity: number | null; durations: number[]; imageId: string | null;
+  surface?: string | null; covered?: boolean | null; dimensions?: string | null; lighting?: boolean | null;
+};
+type Deposit = { type: "NONE" | "PERCENT" | "FIXED"; value: number; note: string | null };
 type Slot = { startsAt: string; endsAt: string; available: boolean; priceAmount: number | null };
 type CourtDay = { id: string; name: string; sport: Sport; slots: Slot[]; closedReason: string | null };
 type Day = { operatingDate: string; currency: string; courts: CourtDay[] };
 type Selection = { court: CourtDay; slot: Slot; idempotencyKey: string };
 type Result = { code: string; status: "PENDING" | "CONFIRMED"; startsAt: string; trackingUrl: string; expiresAt: string | null };
 
-const SPORT: Record<Sport, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel" };
+const SPORT: Record<Sport, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otro" };
+const SURFACE: Record<string, string> = { SINTETICO: "Sintético", CESPED: "Césped natural", CEMENTO: "Cemento", PARQUET: "Parquet", POLVO_LADRILLO: "Polvo de ladrillo", OTRA: "Otra superficie" };
+
+/** Seña requerida para un precio (informativa: se abona al complejo, TURNUP no cobra online). */
+export function depositFor(price: number | null, d: Deposit | undefined): number | null {
+  if (!d || d.type === "NONE" || d.value <= 0 || price === null) return null;
+  return d.type === "PERCENT" ? Math.round((price * d.value) / 100) : Math.min(d.value, price);
+}
+
+function courtFeatures(c: CourtInfo) {
+  return [c.surface ? SURFACE[c.surface] : null, c.covered === true ? "Techada" : c.covered === false ? "Descubierta" : null, c.dimensions ?? null, c.lighting ? "Iluminación" : null, c.capacity ? `${c.capacity} por equipo` : null].filter(Boolean).join(" · ");
+}
 
 function addDays(date: string, days: number) {
   const d = new Date(`${date}T12:00:00Z`);
@@ -30,6 +46,12 @@ export function BookingWidget(props: {
   cancellationPolicy?: string | null;
   cancellationMinutes?: number;
   tenantName?: string;
+  tenantAddress?: string | null;
+  currency?: string;
+  deposit?: Deposit;
+  origin?: "MARKETPLACE" | "DIRECT";
+  /** Jugador con sesión: se precargan sus datos y la reserva queda en "Mis turnos". */
+  player?: { name: string; email: string } | null;
 }) {
   const sports = useMemo(() => [...new Set(props.courts.map((c) => c.sport))], [props.courts]);
   const [sport, setSport] = useState<Sport | "ALL">(sports.length === 1 ? sports[0]! : "ALL");
@@ -78,7 +100,8 @@ export function BookingWidget(props: {
 
   const visibleIds = new Set(visibleCourts.map((c) => c.id));
   const dayCourts = day?.courts.filter((c) => visibleIds.has(c.id)) ?? [];
-  const pills = Array.from({ length: Math.min(7, props.maxAdvanceDays + 1) }, (_, i) => addDays(props.today, i));
+  const pills = Array.from({ length: Math.min(14, props.maxAdvanceDays + 1) }, (_, i) => addDays(props.today, i));
+  const monthFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", month: "short" }), []);
 
   function choose(court: CourtDay, slot: Slot) {
     setSubmitError(null);
@@ -106,6 +129,7 @@ export function BookingWidget(props: {
           notes: String(form.get("notes") ?? "") || undefined,
           idempotencyKey: selection.idempotencyKey,
           website: String(form.get("website") ?? "") || undefined,
+          origin: props.origin ?? "DIRECT",
         }),
       });
       const json = await res.json();
@@ -176,7 +200,30 @@ export function BookingWidget(props: {
   return (
     <div className={styles.layout}>
       <section className={ui.card} aria-labelledby="paso1">
-        <h2 id="paso1"><span className={styles.step}>1</span> Deporte y cancha</h2>
+        <h2 id="paso1"><span className={styles.step}>1</span> Elegí el día</h2>
+        <div className={styles.calendarStrip} role="radiogroup" aria-label="Fecha">
+          {pills.map((d) => {
+            const dt = new Date(`${d}T12:00:00Z`);
+            return (
+              <button key={d} type="button" role="radio" aria-checked={date === d} className={date === d ? styles.dayActive : styles.day}
+                aria-label={d === props.today ? "Hoy" : pillFmt.format(dt)}
+                onClick={() => { setDate(d); setSelection(null); }}>
+                <small>{d === props.today ? "Hoy" : pillFmt.format(dt).split(" ")[0]}</small>
+                <strong>{dt.getUTCDate()}</strong>
+                <small>{monthFmt.format(dt).replace(".", "")}</small>
+              </button>
+            );
+          })}
+        </div>
+        <label className={styles.pickDate}>
+          <span className="sr-only">Otra fecha</span>
+          <input type="date" className={ui.input} value={date} min={props.today} max={addDays(props.today, props.maxAdvanceDays)}
+            onChange={(e) => { if (e.target.value) { setDate(e.target.value); setSelection(null); } }} aria-label="Elegir otra fecha" />
+        </label>
+      </section>
+
+      <section className={ui.card} aria-labelledby="paso2">
+        <h2 id="paso2"><span className={styles.step}>2</span> Elegí la cancha</h2>
         {sports.length > 1 ? (
           <div className={styles.chips} role="radiogroup" aria-label="Deporte">
             {(["ALL", ...sports] as const).map((s) => (
@@ -204,7 +251,8 @@ export function BookingWidget(props: {
               )}
               <span>
                 <strong>{c.name}</strong>
-                <span className={ui.faint}>{SPORT[c.sport]}{c.capacity ? ` · ${c.capacity} jugadores` : ""}</span>
+                <span className={ui.faint}>{SPORT[c.sport]}</span>
+                {courtFeatures(c) ? <span className={styles.courtDesc}>{courtFeatures(c)}</span> : null}
                 {c.description ? <span className={styles.courtDesc}>{c.description}</span> : null}
               </span>
             </button>
@@ -212,21 +260,8 @@ export function BookingWidget(props: {
         </div>
       </section>
 
-      <section className={ui.card} aria-labelledby="paso2">
-        <h2 id="paso2"><span className={styles.step}>2</span> Fecha y duración</h2>
-        <div className={styles.datePills} role="radiogroup" aria-label="Fecha">
-          {pills.map((d) => (
-            <button key={d} type="button" role="radio" aria-checked={date === d} className={date === d ? styles.pillActive : styles.pill}
-              onClick={() => { setDate(d); setSelection(null); }}>
-              {d === props.today ? "Hoy" : pillFmt.format(new Date(`${d}T12:00:00Z`))}
-            </button>
-          ))}
-          <label className={styles.pickDate}>
-            <span className="sr-only">Otra fecha</span>
-            <input type="date" className={ui.input} value={date} min={props.today} max={addDays(props.today, props.maxAdvanceDays)}
-              onChange={(e) => { if (e.target.value) { setDate(e.target.value); setSelection(null); } }} aria-label="Elegir otra fecha" />
-          </label>
-        </div>
+      <section aria-labelledby="paso3" aria-busy={loading} className={ui.stack}>
+        <h2 id="paso3" className={styles.sectionTitle}><span className={styles.step}>3</span> Duración y horario</h2>
         <div className={styles.segmented} role="radiogroup" aria-label="Duración">
           {durations.map((d) => (
             <button key={d} type="button" role="radio" aria-checked={d === duration} className={d === duration ? styles.segActive : styles.seg}
@@ -235,10 +270,6 @@ export function BookingWidget(props: {
             </button>
           ))}
         </div>
-      </section>
-
-      <section aria-labelledby="paso3" aria-busy={loading} className={ui.stack}>
-        <h2 id="paso3" className={styles.sectionTitle}><span className={styles.step}>3</span> Horarios disponibles</h2>
         <p className={ui.faint} style={{ marginTop: "-0.5rem" }}>Los turnos de madrugada (después de las 00:00) aparecen dentro del día anterior.</p>
         {loading ? <div className={`${ui.skeleton}`} style={{ height: 160 }} aria-label="Cargando horarios" /> : null}
         {loadError ? (
@@ -280,17 +311,40 @@ export function BookingWidget(props: {
 
       {selection ? (
         <section className={`${ui.card} ${styles.checkout}`} id="datos" aria-labelledby="paso4">
-          <h2 id="paso4"><span className={styles.step}>4</span> Tus datos</h2>
-          <div className={styles.summary}>
-            <span><strong>{selection.court.name}</strong></span>
-            <span>{dateFmt.format(new Date(selection.slot.startsAt))}</span>
-            <span>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} ({duration} min)</span>
-            <span className={styles.total}>{money(selection.slot.priceAmount, day?.currency ?? "ARS")}</span>
-          </div>
+          <h2 id="paso4"><span className={styles.step}>4</span> Resumen y confirmación</h2>
+          <dl className={styles.summaryList} aria-label="Resumen de la reserva">
+            {props.tenantName ? <><dt>Complejo</dt><dd>{props.tenantName}</dd></> : null}
+            {props.tenantAddress ? <><dt>Dirección</dt><dd>{props.tenantAddress}</dd></> : null}
+            <dt>Cancha</dt><dd><strong>{selection.court.name}</strong></dd>
+            <dt>Deporte</dt><dd>{SPORT[selection.court.sport]}</dd>
+            <dt>Fecha</dt><dd>{dateFmt.format(new Date(selection.slot.startsAt))}</dd>
+            <dt>Horario</dt><dd>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} ({duration} min)</dd>
+            <dt>Duración</dt><dd>{duration} minutos</dd>
+            <dt>Precio total</dt><dd className={styles.total}>{money(selection.slot.priceAmount, day?.currency ?? "ARS")}</dd>
+            {(() => {
+              const dep = depositFor(selection.slot.priceAmount, props.deposit);
+              if (dep === null || selection.slot.priceAmount === null) return null;
+              return (
+                <>
+                  <dt>Seña requerida</dt><dd>{money(dep, day?.currency ?? "ARS")}{props.deposit?.note ? <span className={ui.faint}> · {props.deposit.note}</span> : null}</dd>
+                  <dt>Saldo restante</dt><dd>{money(selection.slot.priceAmount - dep, day?.currency ?? "ARS")}</dd>
+                </>
+              );
+            })()}
+            <dt>Cancelación</dt>
+            <dd>
+              {props.cancellationMinutes !== undefined
+                ? props.cancellationMinutes > 0
+                  ? `Online hasta ${props.cancellationMinutes >= 120 && props.cancellationMinutes % 60 === 0 ? `${props.cancellationMinutes / 60} horas` : `${props.cancellationMinutes} minutos`} antes. `
+                  : "Online hasta el inicio del turno. "
+                : ""}
+              {props.cancellationPolicy ?? ""}
+            </dd>
+          </dl>
           <form onSubmit={submit} className={ui.stack}>
             <label className={ui.field}>
               <span className={ui.label}>Nombre y apellido</span>
-              <input className={ui.input} id="name" name="name" required minLength={2} maxLength={80} autoComplete="name" />
+              <input className={ui.input} id="name" name="name" required minLength={2} maxLength={80} autoComplete="name" defaultValue={props.player?.name ?? ""} />
             </label>
             <div className={ui.grid2}>
               <label className={ui.field}>
@@ -299,7 +353,7 @@ export function BookingWidget(props: {
               </label>
               <label className={ui.field}>
                 <span className={ui.label}>Email</span>
-                <input className={ui.input} id="email" name="email" type="email" required maxLength={254} autoComplete="email" />
+                <input className={ui.input} id="email" name="email" type="email" required maxLength={254} autoComplete="email" defaultValue={props.player?.email ?? ""} />
                 {/* Campo trampa: invisible para personas y lectores de pantalla; los bots lo completan. */}
                 <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, opacity: 0 }} />
               </label>
@@ -308,17 +362,6 @@ export function BookingWidget(props: {
               <span className={ui.label}>Comentarios (opcional)</span>
               <textarea className={ui.textarea} id="notes" name="notes" maxLength={500} />
             </label>
-            {props.cancellationPolicy || props.cancellationMinutes !== undefined ? (
-              <div className={ui.faint} aria-label="Política de cancelación">
-                <strong>Cancelación:</strong>{" "}
-                {props.cancellationMinutes !== undefined
-                  ? props.cancellationMinutes > 0
-                    ? `podés cancelar online hasta ${props.cancellationMinutes >= 120 && props.cancellationMinutes % 60 === 0 ? `${props.cancellationMinutes / 60} horas` : `${props.cancellationMinutes} minutos`} antes del turno. `
-                    : "podés cancelar online hasta el inicio del turno. "
-                  : ""}
-                {props.cancellationPolicy ?? ""}
-              </div>
-            ) : null}
             {submitError ? <p role="alert" className={`${ui.alert} ${ui.alertError}`}>{submitError}</p> : null}
             <div className={ui.row}>
               <button className={ui.button} type="submit" disabled={submitting}>
@@ -327,7 +370,8 @@ export function BookingWidget(props: {
               </button>
               <button type="button" className={`${ui.button} ${ui.buttonSecondary}`} onClick={() => setSelection(null)}>Cambiar horario</button>
             </div>
-            <p className={ui.faint}>No se realiza ningún pago online. El importe se abona en el complejo.</p>
+            <p className={ui.faint}>No se realiza ningún pago online: {props.deposit && props.deposit.type !== "NONE" ? "la seña y el saldo se abonan" : "el importe se abona"} al complejo.</p>
+            {props.player ? <p className={ui.faint}>La reserva quedará en <Link href="/mis-turnos">Mis turnos</Link>.</p> : <p className={ui.faint}>¿Querés ver tus reservas en un solo lugar? <Link href="/cuenta/registro">Creá tu cuenta de jugador</Link> (opcional).</p>}
           </form>
         </section>
       ) : null}

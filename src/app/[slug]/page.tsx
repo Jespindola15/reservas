@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
+import { ActionForm } from "@/components/ActionForm";
+import { PlayerShell } from "@/components/player/PlayerShell";
+import { getCurrentUser } from "@/lib/auth/dal";
+import { prisma } from "@/lib/db/prisma";
+import { listFavoriteTenantIds } from "@/modules/player/favorites";
+import { listPublicReviews } from "@/modules/player/reviews";
+import { reportReviewAction, toggleFavoriteAction } from "../cuenta/actions";
 import ui from "@/components/ui.module.css";
 import { isAppError } from "@/lib/errors";
 import { whatsappLink } from "@/lib/contact/whatsapp";
@@ -10,7 +17,9 @@ import { getPublicTenantProfile } from "@/modules/tenant/public";
 import { BookingWidget } from "./BookingWidget";
 import styles from "./public.module.css";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ desde?: string }> };
+
+const SURFACE: Record<string, string> = { SINTETICO: "Césped sintético", CESPED: "Césped natural", CEMENTO: "Cemento", PARQUET: "Parquet", POLVO_LADRILLO: "Polvo de ladrillo", OTRA: "Otra superficie" };
 
 async function load(slug: string) {
   try {
@@ -34,8 +43,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function TenantPublicPage({ params }: Props) {
+export default async function TenantPublicPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const { desde } = await searchParams;
   const res = await load(slug);
 
   if (!res.ok) {
@@ -50,6 +60,18 @@ export default async function TenantPublicPage({ params }: Props) {
   }
 
   const { tenant, courts, logoId, coverId, galleryIds } = res.data;
+  const user = await getCurrentUser().catch(() => null);
+  const [reviews, favIds] = await Promise.all([listPublicReviews(tenant.slug, 20), user ? listFavoriteTenantIds(user.id) : Promise.resolve([] as string[])]);
+  const isFavorite = favIds.includes(tenant.id);
+  const ratingAvg = reviews.length ? reviews.reduce((a, r) => a + r.rating, 0) / reviews.length : null;
+  // Contador de visitas (sin IP ni datos personales); un fallo nunca rompe la página.
+  await prisma.$queryRaw`SELECT app_track_profile_view(${tenant.slug})`.catch(() => undefined);
+  const deposit =
+    tenant.depositType === "PERCENT" && tenant.depositValue > 0
+      ? `Seña del ${tenant.depositValue} % del turno.`
+      : tenant.depositType === "FIXED" && tenant.depositValue > 0
+        ? `Seña de ${formatMoney(tenant.depositValue, tenant.currency)}.`
+        : null;
   const asset = (id: string) => `/api/public/${tenant.slug}/assets/${id}`;
   const wa = whatsappLink(tenant.whatsapp ?? tenant.contactPhone, `Hola ${tenant.name}, quería consultar por un turno.`);
   const maps = tenant.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tenant.address}`)}` : null;
@@ -58,9 +80,8 @@ export default async function TenantPublicPage({ params }: Props) {
   const sports = [...new Set(courts.map((c) => SPORT[c.sport] ?? c.sport))];
 
   return (
-    <>
-      <TopBar />
-      <main style={brand}>
+      <PlayerShell user={user} wide>
+      <div style={brand} className={styles.fichaWrap}>
         <section className={styles.hero}>
           {coverId ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -77,19 +98,27 @@ export default async function TenantPublicPage({ params }: Props) {
               <p className={ui.eyebrow}>Reservá online{sports.length ? ` · ${sports.join(" y ")}` : ""}</p>
               <h1>{tenant.name}</h1>
               {tenant.description ? <p className={styles.lead}>{tenant.description}</p> : null}
-              <p className={ui.muted}>{[tenant.address, tenant.contactPhone].filter(Boolean).join(" · ")}</p>
+              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.contactPhone].filter(Boolean).join(" · ")}</p>
+              {ratingAvg !== null ? (
+                <p className={styles.ratingLine}><strong>★ {ratingAvg.toFixed(1)}</strong> <a href="#opiniones">{reviews.length} {reviews.length === 1 ? "opinión verificada" : "opiniones verificadas"}</a></p>
+              ) : null}
               <div className={styles.contactRow}>
                 {wa ? <a className={styles.contactLink} href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a> : null}
                 {maps ? <a className={styles.contactLink} href={maps} target="_blank" rel="noopener noreferrer">Cómo llegar</a> : null}
                 {tenant.instagram ? <a className={styles.contactLink} href={`https://instagram.com/${encodeURIComponent(tenant.instagram)}`} target="_blank" rel="noopener noreferrer">Instagram</a> : null}
                 {tenant.facebook ? <a className={styles.contactLink} href={`https://facebook.com/${encodeURIComponent(tenant.facebook)}`} target="_blank" rel="noopener noreferrer">Facebook</a> : null}
                 {tenant.website ? <a className={styles.contactLink} href={tenant.website} target="_blank" rel="noopener noreferrer nofollow">Sitio web</a> : null}
+                {tenant.contactPhone ? <a className={styles.contactLink} href={`tel:${tenant.contactPhone.replace(/[^0-9+]/g, "")}`}>Llamar</a> : null}
+                {user ? (
+                  <ActionForm action={toggleFavoriteAction.bind(null, tenant.slug)} submitLabel={isFavorite ? "♥ En favoritos" : "♡ Agregar a favoritos"} variant={isFavorite ? "primary" : "secondary"} small quietSuccess />
+                ) : null}
+                <a className={`${styles.contactLink} ${styles.bookLink}`} href="#reservar">Reservar</a>
               </div>
             </div>
           </div>
         </section>
         <div className={`${ui.container} ${ui.page}`}>
-          {tenant.services.length || courts.some((c) => c.fromPrice !== null) ? (
+          {tenant.services.length || courts.length ? (
             <section className={styles.infoGrid} aria-label="Información del complejo">
               {tenant.services.length ? (
                 <div className={ui.card}>
@@ -97,18 +126,34 @@ export default async function TenantPublicPage({ params }: Props) {
                   <ul className={styles.services}>{tenant.services.map((s) => <li key={s}>{s}</li>)}</ul>
                 </div>
               ) : null}
-              {courts.some((c) => c.fromPrice !== null) ? (
+              {courts.length ? (
                 <div className={ui.card}>
                   <h2 className={styles.infoTitle}>Canchas y precios</h2>
                   <ul className={styles.priceList}>
                     {courts.map((c) => (
-                      <li key={c.id}><span>{c.name} <span className={ui.faint}>· {SPORT[c.sport] ?? c.sport}</span></span><strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)}` : "a confirmar"}</strong></li>
+                      <li key={c.id}>
+                        <span>
+                          {c.name} <span className={ui.faint}>· {SPORT[c.sport] ?? c.sport}</span>
+                          <span className={styles.courtFeatures}>
+                            {[c.surface ? SURFACE[c.surface] : null, c.covered === true ? "Techada" : c.covered === false ? "Descubierta" : null, c.dimensions, c.lighting ? "Iluminación" : null, c.capacity ? `${c.capacity} por equipo` : null].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        <strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)}` : "a confirmar"}</strong>
+                      </li>
                     ))}
                   </ul>
                 </div>
               ) : null}
             </section>
           ) : null}
+          {deposit || tenant.cancellationPolicy ? (
+            <section className={ui.card} aria-labelledby="politicas" style={{ marginBottom: "1rem" }}>
+              <h2 id="politicas" className={styles.infoTitle}>Políticas de reserva</h2>
+              {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se abona directamente al complejo; TURNUP no cobra online."}</p> : null}
+              {tenant.cancellationPolicy ? <p className={ui.muted} style={{ margin: 0 }}>{tenant.cancellationPolicy}</p> : null}
+            </section>
+          ) : null}
+          <div id="reservar" />
           {courts.length === 0 ? (
             <p className={`${ui.alert} ${ui.alertWarn}`}>Todavía no hay canchas habilitadas para reservar.</p>
           ) : (
@@ -126,10 +171,19 @@ export default async function TenantPublicPage({ params }: Props) {
                 capacity: c.capacity,
                 durations: c.allowedDurations,
                 imageId: c.images[0]?.id ?? null,
+                surface: c.surface,
+                covered: c.covered,
+                dimensions: c.dimensions,
+                lighting: c.lighting,
               }))}
               cancellationPolicy={tenant.cancellationPolicy}
               cancellationMinutes={tenant.publicCancellationMinutes}
               tenantName={tenant.name}
+              tenantAddress={[tenant.address, tenant.city].filter(Boolean).join(", ") || null}
+              currency={tenant.currency}
+              deposit={{ type: tenant.depositType as "NONE" | "PERCENT" | "FIXED", value: tenant.depositValue, note: tenant.depositNote }}
+              origin={desde === "marketplace" ? "MARKETPLACE" : "DIRECT"}
+              player={user ? { name: user.name, email: user.email } : null}
             />
           )}
           {galleryIds.length ? (
@@ -143,9 +197,36 @@ export default async function TenantPublicPage({ params }: Props) {
               </div>
             </section>
           ) : null}
+          <section id="opiniones" aria-labelledby="opiniones-titulo" style={{ marginTop: "1.5rem" }}>
+            <h2 id="opiniones-titulo" className={styles.infoTitle}>Opiniones verificadas</h2>
+            {reviews.length === 0 ? (
+              <p className={ui.muted}>Todavía no hay opiniones. Solo pueden opinar jugadores que reservaron y jugaron acá.</p>
+            ) : (
+              <ul className={styles.reviews}>
+                {reviews.map((r) => (
+                  <li key={r.id} className={ui.card}>
+                    <div className={ui.spread}>
+                      <strong aria-label={`${r.rating} de 5 estrellas`}>{"★".repeat(r.rating)}<span className={ui.faint}>{"★".repeat(5 - r.rating)}</span></strong>
+                      <span className={ui.faint}>{r.author} · {r.createdAt.toLocaleDateString("es-AR", { timeZone: tenant.timezone })}</span>
+                    </div>
+                    {r.comment ? <p style={{ margin: "0.4rem 0 0" }}>{r.comment}</p> : null}
+                    {r.reply ? <p className={styles.reply}><strong>Respuesta del complejo:</strong> {r.reply}</p> : null}
+                    {user ? (
+                      <details className={ui.faint}>
+                        <summary style={{ cursor: "pointer" }}>Denunciar</summary>
+                        <ActionForm action={reportReviewAction.bind(null, tenant.slug, r.id)} submitLabel="Enviar denuncia" variant="ghost" small resetOnSuccess>
+                          <label className={ui.field}><span className={ui.label}>Motivo</span><input className={ui.input} name="reason" required minLength={3} maxLength={300} /></label>
+                        </ActionForm>
+                      </details>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
-      </main>
-    </>
+      </div>
+      </PlayerShell>
   );
 }
 

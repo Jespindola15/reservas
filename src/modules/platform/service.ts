@@ -21,6 +21,7 @@ export const RESERVED_SLUGS = new Set([
   "admin", "panel", "login", "logout", "api", "auth", "app", "www", "static", "assets",
   "public", "registro", "signup", "ayuda", "soporte", "precios", "terminos", "privacidad",
   "favicon.ico", "robots.txt", "sitemap.xml", "_next",
+  "explorar", "mis-turnos", "perfil", "cuenta", "para-complejos", "jugador", "partidos", "clases", "offline",
 ]);
 
 function assertSuperadmin(user: AuthUser): Actor {

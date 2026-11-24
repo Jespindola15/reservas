@@ -42,7 +42,13 @@ export const courtSchema = z.object({
     .transform((a) => [...new Set(a)].sort((x, y) => x - y)),
   slotStepMinutes: z.coerce.number().int().refine((v) => (SLOT_STEPS as readonly number[]).includes(v)),
   basePrice: moneyCents.nullable().optional(),
+  surface: z.enum(["SINTETICO", "CESPED", "CEMENTO", "PARQUET", "POLVO_LADRILLO", "OTRA"]).nullable().optional(),
+  dimensions: z.string().trim().max(40).optional().transform((v) => v || null),
+  covered: z.boolean().nullable().optional(),
+  lighting: z.boolean().nullable().optional(),
 });
+export const SURFACES = ["SINTETICO", "CESPED", "CEMENTO", "PARQUET", "POLVO_LADRILLO", "OTRA"] as const;
+export const SURFACE_LABEL: Record<(typeof SURFACES)[number], string> = { SINTETICO: "Césped sintético", CESPED: "Césped natural", CEMENTO: "Cemento", PARQUET: "Parquet", POLVO_LADRILLO: "Polvo de ladrillo", OTRA: "Otra" };
 export type CourtInput = z.input<typeof courtSchema>;
 
 async function assertCourt(tx: Tx, tenantId: string, courtId: string) {
@@ -91,6 +97,10 @@ export async function getCourtAdmin(ctx: TenantContext, courtId: string) {
         basePrice: true,
         allowedDurations: true,
         slotStepMinutes: true,
+        surface: true,
+        dimensions: true,
+        covered: true,
+        lighting: true,
         images: { select: { id: true, sizeBytes: true }, orderBy: { sortOrder: "asc" } },
         scheduleRules: { select: { id: true, weekday: true, openMinute: true, closeMinute: true }, orderBy: { weekday: "asc" } },
         priceRules: {
@@ -124,7 +134,7 @@ export async function createCourt(ctx: TenantContext, input: CourtInput, actor: 
     const limits = await activePlanLimits(tx, ctx.tenantId);
     if (limits.maxCourts !== null && count >= limits.maxCourts) throw new AppError("LIMIT_REACHED", { resource: "courts", max: limits.maxCourts, plan: limits.planName });
     const court = await tx.court.create({
-      data: { ...data, capacity: data.capacity ?? null, basePrice: data.basePrice ?? null, tenantId: ctx.tenantId, sortOrder: count },
+      data: { ...data, capacity: data.capacity ?? null, basePrice: data.basePrice ?? null, surface: data.surface ?? null, covered: data.covered ?? null, lighting: data.lighting ?? null, tenantId: ctx.tenantId, sortOrder: count },
       select: { id: true, name: true },
     });
     await audit(tx, { tenantId: ctx.tenantId, actor, action: "court.created", entityType: "court", entityId: court.id, metadata: { name: court.name, sport: data.sport } });
@@ -139,7 +149,7 @@ export async function updateCourt(ctx: TenantContext, courtId: string, input: Co
     await assertCourt(tx, ctx.tenantId, courtId);
     await tx.court.updateMany({
       where: { id: courtId, tenantId: ctx.tenantId },
-      data: { ...data, capacity: data.capacity ?? null, basePrice: data.basePrice ?? null },
+      data: { ...data, capacity: data.capacity ?? null, basePrice: data.basePrice ?? null, surface: data.surface ?? null, covered: data.covered ?? null, lighting: data.lighting ?? null },
     });
     await audit(tx, { tenantId: ctx.tenantId, actor, action: "court.updated", entityType: "court", entityId: courtId, metadata: { ...data } });
   });

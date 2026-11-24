@@ -1,5 +1,5 @@
 import ui from "@/components/ui.module.css";
-import { ALLOWED_DURATIONS, SLOT_STEPS, SPORTS, SPORT_LABEL } from "@/modules/courts/service";
+import { ALLOWED_DURATIONS, SLOT_STEPS, SPORTS, SPORT_LABEL, SURFACES, SURFACE_LABEL } from "@/modules/courts/service";
 
 /** Campos compartidos de alta/edición de cancha (render de servidor). */
 export function CourtFields({
@@ -13,6 +13,10 @@ export function CourtFields({
     allowedDurations: number[];
     slotStepMinutes: number;
     basePrice: number | null;
+    surface?: string | null;
+    dimensions?: string | null;
+    covered?: boolean | null;
+    lighting?: boolean | null;
   };
 }) {
   return (
@@ -40,6 +44,31 @@ export function CourtFields({
           <span className={ui.hint}>Se usa cuando no hay una tarifa específica. Se prorratea por duración.</span>
         </label>
       </div>
+      <fieldset className={ui.fieldset}>
+        <legend>Características (se muestran a los jugadores)</legend>
+        <div className={ui.grid2}>
+          <label className={ui.field}>
+            <span className={ui.label}>Superficie</span>
+            <select className={ui.select} name="surface" defaultValue={court?.surface ?? ""}>
+              <option value="">Sin especificar</option>
+              {SURFACES.map((s) => <option key={s} value={s}>{SURFACE_LABEL[s]}</option>)}
+            </select>
+          </label>
+          <label className={ui.field}>
+            <span className={ui.label}>Modalidad</span>
+            <select className={ui.select} name="covered" defaultValue={court?.covered === true ? "si" : court?.covered === false ? "no" : ""}>
+              <option value="">Sin especificar</option><option value="si">Techada</option><option value="no">Descubierta</option>
+            </select>
+          </label>
+          <label className={ui.field}>
+            <span className={ui.label}>Dimensiones</span>
+            <input className={ui.input} name="dimensions" maxLength={40} defaultValue={court?.dimensions ?? ""} placeholder="Ej.: 20 × 10 m" />
+          </label>
+          <label className={ui.checkbox} style={{ alignSelf: "end" }}>
+            <input type="checkbox" name="lighting" defaultChecked={court?.lighting ?? false} /> Iluminación nocturna
+          </label>
+        </div>
+      </fieldset>
       <label className={ui.field}>
         <span className={ui.label}>Descripción</span>
         <textarea className={ui.textarea} name="description" maxLength={500} defaultValue={court?.description ?? ""} placeholder="Césped sintético, techada, con iluminación LED." />

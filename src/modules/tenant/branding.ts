@@ -57,7 +57,18 @@ export const brandingSchema = z.object({
   services: z.array(z.enum(SERVICE_OPTIONS)).max(20).default([]),
   cancellationPolicy: z.string().trim().max(1000).optional().transform(blankToNull),
   publicListed: z.boolean(),
-});
+  city: z.string().trim().max(80).optional().transform((v) => (v && v.length >= 2 ? v : null)),
+  depositType: z.enum(["NONE", "PERCENT", "FIXED"]).default("NONE"),
+  /** PERCENT: 1–100. FIXED: pesos (se guarda en centavos). */
+  depositValue: z.coerce.number().min(0).max(1_000_000).default(0),
+  depositNote: z.string().trim().max(300).optional().transform(blankToNull),
+  announcement: z.string().trim().max(200).optional().transform((v) => (v && v.length >= 3 ? v : null)),
+  announcementUntil: z.union([z.literal(""), z.iso.date()]).optional().transform((v) => (v ? new Date(`${v}T00:00:00Z`) : null)),
+}).transform((d) => ({
+  ...d,
+  depositValue: d.depositType === "NONE" ? 0 : d.depositType === "PERCENT" ? Math.min(100, Math.round(d.depositValue)) : Math.round(d.depositValue * 100),
+  announcementUntil: d.announcement ? d.announcementUntil : null,
+}));
 export type BrandingInput = z.input<typeof brandingSchema>;
 
 export async function getBranding(ctx: TenantContext) {
@@ -67,6 +78,7 @@ export async function getBranding(ctx: TenantContext) {
       select: {
         slug: true, name: true, brandColor: true, whatsapp: true, instagram: true, facebook: true, website: true,
         services: true, cancellationPolicy: true, publicListed: true,
+        city: true, depositType: true, depositValue: true, depositNote: true, announcement: true, announcementUntil: true, currency: true,
       },
     });
     const assets = await tx.tenantAsset.findMany({

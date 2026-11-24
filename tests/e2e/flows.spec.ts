@@ -484,7 +484,7 @@ test("dueño: estadísticas por período y clientes con filtros; personal no ve 
 
 test("portada lista los complejos y el dueño personaliza su página pública (logo, servicios, QR)", async ({ page }) => {
   await page.goto("/");
-  const dir = page.getByRole("region", { name: "Complejos para reservar" });
+  const dir = page.getByRole("region", { name: "Complejos destacados" });
   await expect(dir.getByRole("link", { name: /Fútbol Norte/ })).toBeVisible();
   await expect(dir.getByRole("link", { name: /Pádel Centro/ })).toBeVisible();
 
@@ -541,4 +541,83 @@ test("superadmin: métricas comerciales, estado del sistema y pago de suscripci�
   await form.getByRole("button", { name: "Registrar pago" }).click();
   await expect(page.getByText(/Pago registrado\. Suscripción activa hasta el/)).toBeVisible();
   await expect(page.getByRole("region", { name: "Últimos pagos registrados" })).toContainText("Pádel Centro");
+});
+
+// ---------------------------------------------------------------------------- Plataforma de jugadores (Fase 4)
+
+test("jugador con cuenta: registro, explorar, ficha, favorito, reserva con datos precargados, Mis turnos y cancelación @mobile", async ({ page }, info) => {
+  const email = `jugadora-${info.project.name}-${Date.now()}@example.com`;
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "Secciones" }).getByRole("link", { name: "Explorar" })).toBeVisible();
+  await page.goto("/cuenta/registro");
+  await page.getByLabel("Nombre y apellido").fill("Juana Jugadora");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Teléfono (opcional)").fill("11 5555-7777");
+  await page.getByLabel("Ciudad (opcional)").fill("Rosario");
+  await page.getByLabel("Contraseña (mín. 12 caracteres)").fill("clave-jugadora-123");
+  await page.getByLabel("Repetir contraseña").fill("clave-jugadora-123");
+  await page.getByLabel(/Acepto los términos/).check();
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
+  await expect(page.getByRole("heading", { name: "Hola, Juana" })).toBeVisible();
+  // Un jugador no tiene acceso administrativo.
+  expect((await page.goto("/panel/padel-centro"))?.status()).toBe(404);
+  expect((await page.goto("/admin"))?.status()).toBe(404);
+
+  await page.goto("/explorar?deporte=padel");
+  await expect(page.getByRole("status")).toContainText("complejo");
+  await page.getByRole("link", { name: /Pádel Centro/ }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Pádel Centro" })).toBeVisible();
+  await page.getByRole("button", { name: "♡ Agregar a favoritos" }).click();
+  await expect(page.getByRole("button", { name: "♥ En favoritos" })).toBeVisible();
+
+  const courtName = info.project.name === "mobile" ? "Cancha 2" : "Cancha 1";
+  await page.getByRole("radiogroup", { name: "Fecha" }).getByRole("radio").nth(2).click();
+  await page.getByRole("radio", { name: new RegExp(`^${courtName}`) }).click();
+  await page.getByRole("radio", { name: "60 min" }).click();
+  await page.getByRole("button", { name: /^19:00/ }).click();
+  const summary = page.getByRole("definition").filter({ hasText: "Pádel Centro" });
+  await expect(summary).toBeVisible();
+  await expect(page.getByText("Precio total")).toBeVisible();
+  await expect(page.getByLabel("Nombre y apellido")).toHaveValue("Juana Jugadora");
+  await expect(page.getByLabel("Email")).toHaveValue(email);
+  await page.getByLabel("Teléfono").fill("11 5555-7777");
+  await page.getByRole("button", { name: "Confirmar reserva" }).click();
+  await expect(page.getByRole("heading", { name: "¡Listo, nos vemos en la cancha!" })).toBeVisible();
+
+  await page.goto("/mis-turnos");
+  const turn = page.getByRole("listitem").filter({ hasText: "Pádel Centro" }).first();
+  await expect(turn).toContainText(courtName);
+  await turn.getByRole("button", { name: "Cancelar turno" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sí, cancelar" }).click();
+  // El turno pasa al historial como cancelado (el botón desaparece).
+  await expect(page.getByRole("region", { name: "Historial" }).getByRole("listitem").filter({ hasText: "Pádel Centro" }).first()).toContainText("Cancelada");
+
+  await page.goto("/perfil");
+  await expect(page.getByRole("region", { name: "Complejos favoritos" }).getByRole("link", { name: /Pádel Centro/ })).toBeVisible();
+  await page.getByLabel("Ciudad").fill("Funes");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByText("Perfil actualizado.")).toBeVisible();
+});
+
+test("jugador vincula una reserva hecha como invitado con su enlace privado; con un enlace inválido no", async ({ page, request }) => {
+  const { res, json } = await apiBook(request, "futbol-norte", 0, 3);
+  expect(res.status()).toBe(201);
+  await page.goto("/cuenta/registro");
+  const email = `vincula-${Date.now()}@example.com`;
+  await page.getByLabel("Nombre y apellido").fill("Pedro Invitado");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Contraseña (mín. 12 caracteres)").fill("clave-jugador-456");
+  await page.getByLabel("Repetir contraseña").fill("clave-jugador-456");
+  await page.getByLabel(/Acepto los términos/).check();
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
+  await expect(page.getByRole("heading", { name: "Hola, Pedro" })).toBeVisible();
+  await page.goto("/mis-turnos");
+  await page.getByLabel("Enlace privado de la reserva").fill(`${json.trackingUrl.split("?t=")[0]}?t=${"A".repeat(43)}`);
+  await page.getByRole("button", { name: "Vincular reserva" }).click();
+  await expect(page.getByText("El enlace no es válido o la reserva no existe.")).toBeVisible();
+  await page.getByLabel("Enlace privado de la reserva").fill(`http://localhost${json.trackingUrl}`);
+  await page.getByRole("button", { name: "Vincular reserva" }).click();
+  await expect(page.getByText(`Reserva ${json.code} vinculada a tu cuenta.`)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Próximos" })).toContainText("Fútbol Norte");
 });

@@ -4,6 +4,7 @@ import ui from "@/components/ui.module.css";
 const LINKS = [
   { href: "/admin", label: "Complejos" },
   { href: "/admin/planes", label: "Planes" },
+  { href: "/admin/moderacion", label: "Moderación" },
   { href: "/admin/auditoria", label: "Auditoría" },
   { href: "/admin/seguridad", label: "Seguridad" },
 ];

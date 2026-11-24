@@ -81,3 +81,24 @@
 .priceList li { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.92rem; }
 .gallery { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
+
+.fichaWrap { margin: -1rem -1rem 0; }
+.ratingLine { margin: 0.2rem 0 0; color: var(--lime); }
+.ratingLine a { color: var(--text-muted); margin-left: 0.3rem; }
+.bookLink { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+.courtFeatures { display: block; font-size: 0.78rem; color: var(--text-muted); }
+.reviews { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.reply { margin: 0.5rem 0 0; padding: 0.5rem 0.7rem; border-left: 3px solid var(--lime); background: var(--surface-2); border-radius: 6px; font-size: 0.9rem; }
+
+/* Calendario horizontal */
+.calendarStrip { display: flex; gap: 0.45rem; overflow-x: auto; padding: 0.3rem 0 0.6rem; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.day, .dayActive { flex: none; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 58px; min-height: 70px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit; cursor: pointer; text-transform: capitalize; }
+.day small, .dayActive small { font-size: 0.7rem; opacity: 0.85; }
+.day strong, .dayActive strong { font-size: 1.3rem; line-height: 1.1; }
+.dayActive { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
+.day:focus-visible, .dayActive:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
+/* Resumen */
+.summaryList { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0 0 1rem; padding: 0.9rem; border-radius: var(--radius); background: var(--surface-2); }
+.summaryList dt { color: var(--text-muted); font-size: 0.88rem; }
+.summaryList dd { margin: 0; font-size: 0.95rem; }

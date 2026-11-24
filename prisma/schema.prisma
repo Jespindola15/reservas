@@ -143,6 +143,10 @@ model User {
   accounts    Account[]
   memberships Membership[]
   twoFactors  TwoFactor[]
+  playerProfile   PlayerProfile?
+  favorites       PlayerFavorite[]
+  playerBookings  Booking[]        @relation("PlayerBookings")
+  reviews         Review[]
 
   @@map("users")
 }
@@ -264,6 +268,14 @@ model Tenant {
   cancellationPolicy        String?      @map("cancellation_policy")
   /// Aparece en el listado público de complejos de la portada (opt-out).
   publicListed              Boolean      @default(true) @map("public_listed")
+  city                      String?
+  /// Condiciones de seña (informativas: TURNUP no cobra online todavía).
+  depositType               String       @default("NONE") @map("deposit_type")
+  depositValue              Int          @default(0) @map("deposit_value")
+  depositNote               String?      @map("deposit_note")
+  /// Novedad o promoción publicada por el complejo (texto real, con vencimiento).
+  announcement              String?
+  announcementUntil         DateTime?    @map("announcement_until") @db.Date
   /// Asistente de configuración: último paso completado (0-7) y fin.
   onboardingStep            Int          @default(0) @map("onboarding_step")
   onboardingCompletedAt     DateTime?    @map("onboarding_completed_at") @db.Timestamptz(3)
@@ -288,6 +300,10 @@ model Tenant {
   series               BookingSeries[]
   assets               TenantAsset[]
   subscriptionPayments SubscriptionPayment[]
+  favorites            PlayerFavorite[]
+  reviews              Review[]
+  reviewReports        ReviewReport[]
+  dailyViews           TenantDailyView[]
 
   @@map("tenants")
 }
@@ -367,6 +383,11 @@ model Court {
   capacity         Int?
   /// Precio base por 60 minutos (centavos). Se usa si ninguna regla coincide.
   basePrice        Int?      @map("base_price")
+  /// Características públicas (ficha del marketplace).
+  surface          String?
+  dimensions       String?
+  covered          Boolean?
+  lighting         Boolean?
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -481,6 +502,10 @@ model Booking {
   cancelReason       String?       @map("cancel_reason")
   /// Serie recurrente a la que pertenece (null = turno suelto).
   seriesId           String?       @map("series_id") @db.Uuid
+  /// Cuenta de jugador dueña de la reserva (null = invitado). Nunca da acceso al panel.
+  playerUserId       String?       @map("player_user_id") @db.Uuid
+  /// De dónde vino la reserva online: MARKETPLACE (catálogo de TURNUP) o DIRECT (enlace del complejo).
+  origin             String?
   /// Optimistic locking para cambios de estado/reprogramación.
   version            Int           @default(1)
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -492,6 +517,8 @@ model Booking {
   allocation CourtAllocation?
   series     BookingSeries?   @relation(fields: [tenantId, seriesId], references: [tenantId, id])
   payments   BookingPayment[]
+  player     User?            @relation("PlayerBookings", fields: [playerUserId], references: [id], onDelete: SetNull)
+  review     Review?
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -500,6 +527,7 @@ model Booking {
   @@index([courtId, startsAt])
   @@index([status, expiresAt])
   @@index([tenantId, seriesId])
+  @@index([playerUserId, startsAt])
   @@map("bookings")
 }
 
@@ -779,4 +807,93 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------- Jugadores (Fase 4)
+
+/// Perfil del jugador (rol global, independiente de las membresías de complejos).
+model PlayerProfile {
+  userId          String    @id @map("user_id") @db.Uuid
+  phone           String?
+  city            String?
+  favoriteSports  String[]  @default([]) @map("favorite_sports")
+  avatar          Bytes?
+  avatarUpdatedAt DateTime? @map("avatar_updated_at") @db.Timestamptz(3)
+  notifyEmail     Boolean   @default(true) @map("notify_email")
+  notifyReminders Boolean   @default(true) @map("notify_reminders")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("player_profiles")
+}
+
+model PlayerFavorite {
+  userId    String   @map("user_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tenantId])
+  @@index([tenantId])
+  @@map("player_favorites")
+}
+
+/// Opinión verificada: una por reserva jugada.
+model Review {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  bookingId    String    @unique @map("booking_id") @db.Uuid
+  playerUserId String?   @map("player_user_id") @db.Uuid
+  rating       Int       @db.SmallInt
+  comment      String?
+  status       String    @default("PUBLISHED")
+  reply        String?
+  repliedAt    DateTime? @map("replied_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking Booking        @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Cascade)
+  player  User?          @relation(fields: [playerUserId], references: [id], onDelete: SetNull)
+  reports ReviewReport[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, bookingId])
+  @@index([tenantId, status, createdAt])
+  @@map("reviews")
+}
+
+model ReviewReport {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  reviewId       String    @map("review_id") @db.Uuid
+  reporterUserId String?   @map("reporter_user_id") @db.Uuid
+  reporterKind   String    @map("reporter_kind")
+  reason         String
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolution     String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  review Review @relation(fields: [tenantId, reviewId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([reviewId, reporterUserId])
+  @@index([resolvedAt])
+  @@map("review_reports")
+}
+
+/// Visitas diarias a la ficha pública (solo un contador; sin IP ni datos personales).
+model TenantDailyView {
+  tenantId String   @map("tenant_id") @db.Uuid
+  day      DateTime @db.Date
+  views    Int      @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, day])
+  @@map("tenant_daily_views")
 }

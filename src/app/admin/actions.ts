@@ -116,3 +116,13 @@ export async function recordSubscriptionPaymentAction(_p: ActionResult, fd: Form
         : "Pago registrado (el complejo no tiene una suscripción vigente: asignale un plan).";
   });
 }
+
+export async function moderateReviewAction(reviewId: string, decision: "HIDE" | "KEEP" | "RESTORE", _p: ActionResult, fd: FormData) {
+  return runAction("platform.moderateReview", async () => {
+    const user = await requireSuperadmin();
+    const { moderateReview } = await import("@/modules/player/reviews");
+    await moderateReview(user, reviewId, decision, String(fd.get("note") ?? ""));
+    revalidatePath("/admin/moderacion");
+    return decision === "HIDE" ? "Opinión ocultada." : decision === "RESTORE" ? "Opinión restaurada." : "Denuncia descartada: la opinión sigue publicada.";
+  });
+}
