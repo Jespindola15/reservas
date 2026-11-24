@@ -13,7 +13,7 @@
  * - Rollback: ver docs/ROLLBACK.md (restaurar producción desde la rama de respaldo).
  * Requiere conexión TCP al puerto 5432 de Neon y las dependencias del proyecto (prisma, pg).
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import pg from "pg";
 
@@ -69,7 +69,9 @@ async function verify(branch, label, before) {
 async function main() {
   const prodOwner = await uri(PROD_BRANCH, "reservas_owner");
   const before = (await q(prodOwner, COUNTS))[0];
-  const status = prisma(["migrate", "status"], prodOwner);
+  // `migrate status` sale con código 1 cuando hay migraciones pendientes: se lee la salida igual.
+  const st = spawnSync("npx", ["prisma", "migrate", "status"], { env: { ...process.env, MIGRATION_DATABASE_URL: prodOwner }, encoding: "utf8" });
+  const status = `${st.stdout}\n${st.stderr}`;
   const pending = [...status.matchAll(/^(\d{14}_\w+)$/gm)].map((m) => m[1]);
   console.log(`Producción: ${JSON.stringify(before)}. Migraciones pendientes: ${pending.length ? pending.join(", ") : "ninguna"}.`);
   if (!pending.length) return;
