@@ -9,6 +9,8 @@ import { publicTenantUrl } from "@/lib/public-url";
 import { MAX_GALLERY, SERVICE_OPTIONS, getBranding } from "@/modules/tenant/branding";
 import { deleteTenantAssetAction, updateBrandingAction, uploadTenantAssetAction } from "../config-actions";
 import { CopyLink } from "./CopyLink";
+import { LocationPicker } from "@/components/map/LocationPicker";
+import { AR_PROVINCES } from "@/lib/geo";
 
 export const metadata: Metadata = { title: "Página pública" };
 
@@ -123,8 +125,26 @@ export default async function PublicPageSettings({ params }: { params: Promise<{
             <label className={ui.field}><span className={ui.label}>Instagram</span><input className={ui.input} name="instagram" maxLength={80} defaultValue={b.instagram ?? ""} placeholder="@tucomplejo" /></label>
             <label className={ui.field}><span className={ui.label}>Facebook</span><input className={ui.input} name="facebook" maxLength={80} defaultValue={b.facebook ?? ""} placeholder="tucomplejo" /></label>
             <label className={ui.field}><span className={ui.label}>Sitio web</span><input className={ui.input} type="url" name="website" maxLength={200} defaultValue={b.website ?? ""} placeholder="https://" /></label>
+          </div>
+        </section>
+        <section className={ui.card} aria-labelledby="ubicacion">
+          <div className={ui.cardHeader}><h2 id="ubicacion">Ubicación</h2></div>
+          <p className={ui.muted} style={{ marginTop: 0 }}>
+            Dirección: <strong>{b.address ?? "sin cargar"}</strong> · <Link href={`/panel/${slug}/ajustes`}>editarla en Ajustes</Link>
+          </p>
+          <div className={ui.grid2}>
+            <label className={ui.field}><span className={ui.label}>Provincia</span>
+              <select className={ui.select} name="province" defaultValue={b.province ?? ""}>
+                <option value="">Elegí la provincia</option>
+                {AR_PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
             <label className={ui.field}><span className={ui.label}>Ciudad</span><input className={ui.input} name="city" maxLength={80} defaultValue={b.city ?? ""} placeholder="Ej.: Rosario" /><span className={ui.hint}>Los jugadores filtran por ciudad en el catálogo.</span></label>
           </div>
+          <LocationPicker
+            initial={b.latitude !== null && b.longitude !== null ? { lat: b.latitude, lng: b.longitude } : null}
+            defaultQuery={[b.address, b.city, b.province].filter(Boolean).join(", ")}
+          />
         </section>
         <section className={ui.card}>
           <div className={ui.cardHeader}><h2>Servicios</h2></div>

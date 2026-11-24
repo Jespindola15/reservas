@@ -69,7 +69,7 @@ export default async function Home() {
             <span>
               <strong>{next.tenantName}</strong>
               <span className={styles.meta} style={{ display: "block" }}>
-                {next.startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone: next.tenantTimezone })} hs · {next.courtName} · {SPORT_LABEL[next.sport] ?? next.sport}
+                {next.startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: next.tenantTimezone })} hs · {next.courtName} · {SPORT_LABEL[next.sport] ?? next.sport}
               </span>
               {next.status === "PENDING" ? <span className={styles.badge}>Esperando confirmación</span> : null}
             </span>

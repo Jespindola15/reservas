@@ -8,6 +8,7 @@ import { AppError } from "@/lib/errors";
 import { deleteObjectQuietly, getObjectStore } from "@/lib/storage/images";
 import { parseOrThrow } from "@/lib/validation";
 import { sniffImageType } from "@/modules/courts/service";
+import { AR_PROVINCES } from "@/lib/geo";
 
 /**
  * Personalización de la página pública: marca, redes, servicios, política de
@@ -27,7 +28,6 @@ export const SERVICE_OPTIONS = [
   "Techada",
   "Accesible",
   "Seguridad",
-  "Escuelita / clases",
 ] as const;
 
 const blankToNull = (v: string | undefined) => (v ? v : null);
@@ -58,6 +58,9 @@ export const brandingSchema = z.object({
   cancellationPolicy: z.string().trim().max(1000).optional().transform(blankToNull),
   publicListed: z.boolean(),
   city: z.string().trim().max(80).optional().transform((v) => (v && v.length >= 2 ? v : null)),
+  province: z.union([z.literal(""), z.enum(AR_PROVINCES)]).optional().transform((v) => v || null),
+  latitude: z.union([z.literal(""), z.coerce.number().min(-90).max(90)]).optional().transform((v) => (v === "" || v === undefined ? null : v)),
+  longitude: z.union([z.literal(""), z.coerce.number().min(-180).max(180)]).optional().transform((v) => (v === "" || v === undefined ? null : v)),
   depositType: z.enum(["NONE", "PERCENT", "FIXED"]).default("NONE"),
   /** PERCENT: 1–100. FIXED: pesos (se guarda en centavos). */
   depositValue: z.coerce.number().min(0).max(1_000_000).default(0),
@@ -68,6 +71,9 @@ export const brandingSchema = z.object({
   ...d,
   depositValue: d.depositType === "NONE" ? 0 : d.depositType === "PERCENT" ? Math.min(100, Math.round(d.depositValue)) : Math.round(d.depositValue * 100),
   announcementUntil: d.announcement ? d.announcementUntil : null,
+  // Coordenadas: ambas o ninguna (igual que el CHECK de la base).
+  latitude: d.latitude !== null && d.longitude !== null ? Math.round(d.latitude * 1e6) / 1e6 : null,
+  longitude: d.latitude !== null && d.longitude !== null ? Math.round(d.longitude * 1e6) / 1e6 : null,
 }));
 export type BrandingInput = z.input<typeof brandingSchema>;
 
@@ -78,7 +84,7 @@ export async function getBranding(ctx: TenantContext) {
       select: {
         slug: true, name: true, brandColor: true, whatsapp: true, instagram: true, facebook: true, website: true,
         services: true, cancellationPolicy: true, publicListed: true,
-        city: true, depositType: true, depositValue: true, depositNote: true, announcement: true, announcementUntil: true, currency: true,
+        city: true, province: true, latitude: true, longitude: true, address: true, depositType: true, depositValue: true, depositNote: true, announcement: true, announcementUntil: true, currency: true,
       },
     });
     const assets = await tx.tenantAsset.findMany({

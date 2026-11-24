@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ComplexCard } from "@/components/player/ComplexCard";
 import { PlayerShell } from "@/components/player/PlayerShell";
 import styles from "@/components/player/player.module.css";
 import ui from "@/components/ui.module.css";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { todayIn } from "@/modules/booking/time";
 import { cachedCatalog } from "@/modules/marketplace/cached";
-import { availabilityForDate, catalogCities, catalogFilterSchema, filterCatalog, SPORT_GROUP_LABEL } from "@/modules/marketplace/catalog";
+import { availabilityForDate, catalogCities, catalogFilterSchema, filterCatalog, SPORT_GROUP_LABEL, SPORT_GROUPS } from "@/modules/marketplace/catalog";
 import { listFavoriteTenantIds } from "@/modules/player/favorites";
 import { SERVICE_OPTIONS } from "@/modules/tenant/branding";
 import { NearMe } from "./NearMe";
+import { CatalogResults } from "./CatalogResults";
 
 export const metadata: Metadata = { title: "Explorar complejos — TURNUP" };
 
@@ -91,23 +91,15 @@ export default async function ExplorePage({ searchParams }: { searchParams: Prom
 
       <div className={styles.chips} style={{ marginTop: "0.8rem" }} aria-label="Deporte">
         <Link href={qs({ deporte: undefined })} className={!f.deporte ? styles.chipOn : styles.chip}>Todos</Link>
-        {Object.entries(SPORT_GROUP_LABEL).map(([k, v]) => (
+        {Object.entries(SPORT_GROUP_LABEL).filter(([k]) => all.some((c) => c.sports.some((s) => SPORT_GROUPS[k]!.includes(s)))).map(([k, v]) => (
           <Link key={k} href={qs({ deporte: k })} className={f.deporte === k ? styles.chipOn : styles.chip} aria-current={f.deporte === k ? "true" : undefined}>{v}</Link>
         ))}
       </div>
       <NearMe cities={cities} />
 
-      <p className={ui.muted} role="status" style={{ margin: "0.6rem 0" }}>
-        {results.length === 1 ? "1 complejo" : `${results.length} complejos`}
-        {f.fecha ? ` con turnos libres el ${f.fecha.split("-").reverse().join("/")}` : ""}
-      </p>
-      {results.length ? (
-        <ul className={styles.cards}>
-          {results.map((c) => <li key={c.id}><ComplexCard c={c} favorite={favIds.includes(c.id)} freeSlots={avail?.get(c.id)} /></li>)}
-        </ul>
-      ) : (
-        <p className={styles.empty}>No encontramos complejos con esos filtros. <Link href="/explorar">Ver todos</Link></p>
-      )}
+      {f.fecha ? <p className={ui.faint} style={{ margin: "0.4rem 0 0" }}>Mostrando complejos con turnos libres el {f.fecha.split("-").reverse().join("/")}.</p> : null}
+      <CatalogResults entries={results} favIds={favIds} avail={avail ? Object.fromEntries(avail) : null} />
+      {results.length === 0 ? <p className={styles.empty}>No encontramos complejos con esos filtros. <Link href="/explorar">Ver todos</Link></p> : null}
     </PlayerShell>
   );
 }

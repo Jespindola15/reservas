@@ -11,6 +11,8 @@ import { reportReviewAction, toggleFavoriteAction } from "../cuenta/actions";
 import ui from "@/components/ui.module.css";
 import { isAppError } from "@/lib/errors";
 import { whatsappLink } from "@/lib/contact/whatsapp";
+import { directionsUrl } from "@/lib/geo";
+import { MapView } from "@/components/map/MapView";
 import { formatMoney } from "@/modules/booking/pricing";
 import { todayIn } from "@/modules/booking/time";
 import { getPublicTenantProfile } from "@/modules/tenant/public";
@@ -74,7 +76,7 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
         : null;
   const asset = (id: string) => `/api/public/${tenant.slug}/assets/${id}`;
   const wa = whatsappLink(tenant.whatsapp ?? tenant.contactPhone, `Hola ${tenant.name}, quería consultar por un turno.`);
-  const maps = tenant.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tenant.address}`)}` : null;
+  const maps = directionsUrl(tenant);
   const brand = brandVars(tenant.brandColor);
   const SPORT: Record<string, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otros deportes" };
   const sports = [...new Set(courts.map((c) => SPORT[c.sport] ?? c.sport))];
@@ -98,7 +100,7 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
               <p className={ui.eyebrow}>Reservá online{sports.length ? ` · ${sports.join(" y ")}` : ""}</p>
               <h1>{tenant.name}</h1>
               {tenant.description ? <p className={styles.lead}>{tenant.description}</p> : null}
-              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.contactPhone].filter(Boolean).join(" · ")}</p>
+              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.province, tenant.contactPhone].filter(Boolean).join(" · ")}</p>
               {ratingAvg !== null ? (
                 <p className={styles.ratingLine}><strong>★ {ratingAvg.toFixed(1)}</strong> <a href="#opiniones">{reviews.length} {reviews.length === 1 ? "opinión verificada" : "opiniones verificadas"}</a></p>
               ) : null}
@@ -138,7 +140,7 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
                             {[c.surface ? SURFACE[c.surface] : null, c.covered === true ? "Techada" : c.covered === false ? "Descubierta" : null, c.dimensions, c.lighting ? "Iluminación" : null, c.capacity ? `${c.capacity} por equipo` : null].filter(Boolean).join(" · ")}
                           </span>
                         </span>
-                        <strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)}` : "a confirmar"}</strong>
+                        <strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)} el turno` : "a confirmar"}</strong>
                       </li>
                     ))}
                   </ul>
@@ -151,6 +153,16 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
               <h2 id="politicas" className={styles.infoTitle}>Políticas de reserva</h2>
               {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se abona directamente al complejo; TURNUP no cobra online."}</p> : null}
               {tenant.cancellationPolicy ? <p className={ui.muted} style={{ margin: 0 }}>{tenant.cancellationPolicy}</p> : null}
+            </section>
+          ) : null}
+          {tenant.latitude !== null && tenant.longitude !== null ? (
+            <section aria-labelledby="ubicacion-titulo" className={ui.card} style={{ marginBottom: "1rem" }}>
+              <div className={ui.spread}>
+                <h2 id="ubicacion-titulo" className={styles.infoTitle} style={{ margin: 0 }}>Ubicación</h2>
+                {maps ? <a className={`${ui.button} ${ui.buttonSmall}`} href={maps} target="_blank" rel="noopener noreferrer">Cómo llegar</a> : null}
+              </div>
+              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.province].filter(Boolean).join(", ")}</p>
+              <MapView lat={tenant.latitude} lng={tenant.longitude} label={tenant.name} />
             </section>
           ) : null}
           <div id="reservar" />

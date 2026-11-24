@@ -4,10 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import styles from "./player.module.css";
 
-/**
- * Navegación de la plataforma de jugadores. Solo secciones que YA funcionan; "Partidos" y
- * "Clases" se agregarán a esta lista cuando existan (ver docs/FASE4.md), sin botones vacíos.
- */
+/** Navegación de la plataforma de jugadores (solo secciones que funcionan). */
 const ITEMS = [
   { href: "/", label: "Inicio", icon: "M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" },
   { href: "/explorar", label: "Explorar", icon: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3" },

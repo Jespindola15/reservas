@@ -75,3 +75,20 @@ describe("imágenes de marca y puesta en marcha", () => {
     expect((await getOnboarding(a.ctx)).finished).toBe(true);
   });
 });
+
+describe("ubicación del complejo", () => {
+  it("guarda provincia y coordenadas (ambas o ninguna) y el catálogo las expone; la base rechaza valores inválidos", async () => {
+    const a = await makeTenant("ubi4");
+    const u = await makeUser("o@ubi4.test", { tenantId: a.tenant.id, role: "OWNER" });
+    const actor = { type: "USER" as const, userId: u.id };
+    await updateBranding(a.ctx, { publicListed: true, province: "Santa Fe", city: "Rosario", latitude: "-32.9477123", longitude: "-60.6304" }, actor);
+    const cat = (await (await import("@/modules/marketplace/catalog")).loadCatalog()).find((c) => c.slug === a.tenant.slug)!;
+    expect(cat).toMatchObject({ province: "Santa Fe", city: "Rosario", latitude: -32.947712, longitude: -60.6304 });
+    // Solo una coordenada: se guardan ambas en null.
+    await updateBranding(a.ctx, { publicListed: true, latitude: "-32.9", longitude: "" }, actor);
+    expect(await owner.tenant.findUniqueOrThrow({ where: { id: a.tenant.id }, select: { latitude: true, longitude: true } })).toEqual({ latitude: null, longitude: null });
+    await expect(updateBranding(a.ctx, { publicListed: true, latitude: "95", longitude: "10" }, actor)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(updateBranding(a.ctx, { publicListed: true, province: "Narnia" as never }, actor)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(owner.tenant.update({ where: { id: a.tenant.id }, data: { latitude: 10, longitude: null } })).rejects.toThrow();
+  });
+});

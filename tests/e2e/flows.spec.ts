@@ -621,3 +621,36 @@ test("jugador vincula una reserva hecha como invitado con su enlace privado; con
   await page.reload();
   await expect(page.getByRole("region", { name: "Próximos" })).toContainText("Fútbol Norte");
 });
+
+test("ubicación: el dueño marca el complejo en el mapa y el jugador ordena por cercanía y ve cómo llegar", async ({ page, context }) => {
+  // Las teselas de OpenStreetMap no se descargan en las pruebas (respeto de su política de uso).
+  await context.route("https://tile.openstreetmap.org/**", (r) => r.fulfill({ status: 204, body: "" }));
+  await login(page, "duenio@padel-centro.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/padel-centro");
+  await page.goto("/panel/padel-centro/pagina");
+  const ubic = page.getByRole("region", { name: "Ubicación" });
+  await ubic.getByLabel("Provincia").selectOption("Santa Fe");
+  await ubic.getByRole("textbox", { name: /^Ciudad/ }).fill("Rosario");
+  await ubic.getByRole("button", { name: "Abrir mapa" }).click();
+  const map = ubic.getByLabel(/Mapa: tocá o arrastrá/);
+  await expect(map).toBeVisible();
+  await map.click({ position: { x: 150, y: 150 } });
+  await expect(ubic.getByText(/Ubicación elegida: -?\d+\.\d{5}, -?\d+\.\d{5}/)).toBeVisible();
+  await page.getByRole("button", { name: "Guardar página pública" }).click();
+  await expect(page.getByText("Página pública actualizada.")).toBeVisible();
+
+  await page.context().clearCookies();
+  await page.goto("/padel-centro");
+  await expect(page.getByRole("link", { name: "Cómo llegar" }).first()).toHaveAttribute("href", /maps\/dir\/\?api=1&destination=-?\d/);
+  await page.getByRole("button", { name: "Ver en el mapa" }).click();
+  await expect(page.getByRole("region", { name: "Mapa con la ubicación de Pádel Centro" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "OpenStreetMap" })).toBeVisible(); // atribución obligatoria
+
+  await context.grantPermissions(["geolocation"]);
+  await context.setGeolocation({ latitude: -34.6037, longitude: -58.3816 });
+  await page.goto("/explorar");
+  await page.getByRole("button", { name: "📍 Ordenar por cercanía" }).click();
+  await expect(page.getByText(/Ordenado por cercanía/)).toBeVisible();
+  await expect(page.getByRole("listitem").first()).toContainText("Pádel Centro");
+  await expect(page.getByRole("listitem").first()).toContainText(/📍 a \d+/);
+});

@@ -61,22 +61,15 @@ La landing comercial para complejos se movió a `/para-complejos`. Los enlaces p
 
 ## Navegación y PWA
 
-Barra inferior (móvil) / superior (escritorio): Inicio, Explorar, Mis turnos, Perfil. "Partidos" y "Clases" se
-agregan a la lista `ITEMS` de `src/components/player/BottomNav.tsx` cuando existan (no se muestran antes).
+Barra inferior (móvil) / superior (escritorio): Inicio, Explorar, Mis turnos, Perfil.
 La PWA instalada abre el inicio de jugadores; atajos: Reservar cancha, Mis turnos, Calendario del complejo.
 El service worker sigue sin cachear páginas ni datos privados.
 
-## Diseño de módulos sociales (NO implementados)
+## Alcance
 
-| Módulo | Modelo propuesto | Reglas clave |
-|---|---|---|
-| Partidos abiertos | `matches` (reserva opcional, deporte, nivel, cupos, visibilidad) + `match_players` (estado: invitado/confirmado/lista de espera) | Solo el organizador ve contactos; los demás ven nombre abreviado. Cupos con restricción en BD. |
-| Grupos | `groups`, `group_members` (rol admin/miembro), invitación por enlace de un solo uso | Contenido del grupo visible solo a miembros (RLS por `app.player_id`). |
-| Invitar amigos | `invites` con token HMAC y vencimiento | Sin agenda de contactos; el jugador comparte el enlace. |
-| Dividir el costo | `split_payments` por reserva (montos por participante, estado manual) | Hasta integrar Mercado Pago, solo registro y recordatorio manual; nunca cobro simulado. |
-| Clases | `coaches` (perfil verificado por el complejo), `classes` sobre bloques de cancha, `class_enrollments` | Las clases ocupan la cancha con la misma restricción antisolapamiento (bloque). |
-| Torneos | `tournaments`, `teams`, `fixtures` sobre bloques de cancha | Inscripción con cupos; resultados cargados por el complejo. |
-| Ranking | `rankings` derivados de resultados de torneos/partidos verificados | Solo resultados confirmados por ambas partes o por el complejo. |
+TURNUP se enfoca exclusivamente en la gestión de complejos y las reservas deportivas. Quedan **fuera del
+alcance** (no se implementan ni se planifican): organización de partidos, partidos abiertos, búsqueda de
+jugadores, grupos, invitaciones deportivas, división de gastos, clases, torneos y rankings.
 
 ## Migraciones (aditivas)
 

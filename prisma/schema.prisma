@@ -269,6 +269,10 @@ model Tenant {
   /// Aparece en el listado público de complejos de la portada (opt-out).
   publicListed              Boolean      @default(true) @map("public_listed")
   city                      String?
+  province                  String?
+  /// Ubicación (WGS84) elegida por el complejo en el mapa. Ambas o ninguna.
+  latitude                  Float?
+  longitude                 Float?
   /// Condiciones de seña (informativas: TURNUP no cobra online todavía).
   depositType               String       @default("NONE") @map("deposit_type")
   depositValue              Int          @default(0) @map("deposit_value")

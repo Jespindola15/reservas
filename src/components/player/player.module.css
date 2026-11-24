@@ -19,6 +19,7 @@
 .navActive { color: var(--lime); }
 .navItem:focus-visible, .navActive:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 @media (min-width: 900px) {
+  .top { order: -2; }
   .bottomNav { position: sticky; top: 56px; inset: auto; order: -1; grid-template-columns: repeat(4, max-content); justify-content: center; gap: 0.5rem; padding: 0.3rem; border-top: 0; border-bottom: 1px solid var(--border); }
   .navItem, .navActive { flex-direction: row; gap: 0.45rem; min-height: 42px; padding: 0 1rem; font-size: 0.9rem; }
   .main, .mainWide { padding-bottom: 2rem; }
@@ -44,6 +45,7 @@
 @media (min-width: 700px) { .rail { grid-auto-columns: minmax(260px, 32%); } }
 .card { position: relative; display: flex; flex-direction: column; height: 100%; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
 .card:hover, .card:focus-visible { border-color: var(--lime); }
+.cardCoverEmpty { height: 56px; width: 100%; display: block; background: linear-gradient(135deg, rgb(160 248 2 / 18%), var(--surface-2) 60%); }
 .cardCover { aspect-ratio: 16 / 9; width: 100%; object-fit: cover; background: linear-gradient(135deg, var(--surface-3), var(--bg-2)); display: block; }
 .cardBody { display: flex; gap: 0.7rem; padding: 0.75rem; align-items: flex-start; }
 .cardLogo { width: 44px; height: 44px; flex: none; border-radius: 12px; object-fit: cover; display: grid; place-items: center; background: var(--lime); color: var(--on-lime); font-weight: 900; margin-top: -30px; box-shadow: 0 0 0 3px var(--surface); }

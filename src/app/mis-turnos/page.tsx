@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Mis turnos — TURNUP" };
 
 function when(b: PlayerBooking) {
   const o = { timeZone: b.tenantTimezone } as const;
-  return `${b.startsAt.toLocaleDateString("es-AR", { ...o, weekday: "long", day: "numeric", month: "long" })} · ${b.startsAt.toLocaleTimeString("es-AR", { ...o, hour: "2-digit", minute: "2-digit" })} hs`;
+  return `${b.startsAt.toLocaleDateString("es-AR", { ...o, weekday: "long", day: "numeric", month: "long" })} · ${b.startsAt.toLocaleTimeString("es-AR", { ...o, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} hs`;
 }
 
 function Turn({ b }: { b: PlayerBooking }) {

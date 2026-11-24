@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/lib/actions";
@@ -198,6 +198,7 @@ export async function deleteCourtImageAction(slug: string, courtId: string, _p: 
     const { ctx, user } = await requireTenant(slug, "court.manage");
     await deleteCourtImage(ctx, parseOrThrow(z.uuid(), fd.get("imageId")), actorOf(user.id));
     revalidatePath(`/panel/${slug}/canchas/${courtId}`);
+    updateTag("public-directory");
     return "Imagen eliminada.";
   });
 }
@@ -351,6 +352,9 @@ export async function updateBrandingAction(slug: string, _p: ActionResult, fd: F
         cancellationPolicy: String(fd.get("cancellationPolicy") ?? ""),
         publicListed: fd.get("publicListed") === "on",
         city: String(fd.get("city") ?? ""),
+        province: String(fd.get("province") ?? "") as "",
+        latitude: String(fd.get("latitude") ?? ""),
+        longitude: String(fd.get("longitude") ?? ""),
         depositType: String(fd.get("depositType") ?? "NONE") as "NONE",
         depositValue: String(fd.get("depositValue") ?? "0"),
         depositNote: String(fd.get("depositNote") ?? ""),
@@ -361,7 +365,8 @@ export async function updateBrandingAction(slug: string, _p: ActionResult, fd: F
     );
     revalidatePath(`/panel/${slug}`, "layout");
     revalidatePath(`/${slug}`);
-    revalidateTag("public-directory", "max");
+    // Inmediato (no "stale-while-revalidate"): el dueño ve su cambio en el catálogo al instante.
+    updateTag("public-directory");
     revalidatePath("/");
     return "Página pública actualizada.";
   });
@@ -375,6 +380,7 @@ export async function uploadTenantAssetAction(slug: string, kind: AssetKind, _p:
     await addTenantAsset(ctx, parseOrThrow(z.enum(ASSET_KINDS), kind), new Uint8Array(await file.arrayBuffer()), actorOf(user.id));
     revalidatePath(`/panel/${slug}`, "layout");
     revalidatePath(`/${slug}`);
+    updateTag("public-directory");
     return kind === "LOGO" ? "Logo actualizado." : kind === "COVER" ? "Portada actualizada." : "Foto agregada a la galería.";
   });
 }
@@ -385,6 +391,7 @@ export async function deleteTenantAssetAction(slug: string, _p: ActionResult, fd
     await deleteTenantAsset(ctx, parseOrThrow(z.uuid(), fd.get("assetId")), actorOf(user.id));
     revalidatePath(`/panel/${slug}`, "layout");
     revalidatePath(`/${slug}`);
+    updateTag("public-directory");
     return "Imagen eliminada.";
   });
 }

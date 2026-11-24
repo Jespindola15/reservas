@@ -3,11 +3,7 @@
 import { useRouter } from "next/navigation";
 import ui from "@/components/ui.module.css";
 
-/**
- * Ubicación MANUAL (elegir ciudad). La geolocalización del navegador queda preparada para
- * cuando los complejos carguen sus coordenadas (vista de mapa, ver docs/FASE4.md): hoy no se
- * ofrece el botón porque no podría ordenar por distancia real (no se muestran funciones a medias).
- */
+/** Ubicación MANUAL: elegir ciudad. (El orden por cercanía con permiso está en CatalogResults.) */
 export function NearMe({ cities }: { cities: string[] }) {
   const router = useRouter();
   if (cities.length < 2) return null;

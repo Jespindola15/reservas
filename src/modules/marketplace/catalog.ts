@@ -25,6 +25,9 @@ export type CatalogEntry = {
   ratingCount: number;
   hasCovered: boolean;
   requiresDeposit: boolean;
+  province: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export async function loadCatalog(limit = 300): Promise<CatalogEntry[]> {
@@ -33,6 +36,7 @@ export async function loadCatalog(limit = 300): Promise<CatalogEntry[]> {
       id: string; slug: string; name: string; city: string | null; address: string | null; sports: string[]; court_count: number;
       logo_asset_id: string | null; cover_asset_id: string | null; min_hour_price: number | null; currency: string; services: string[];
       rating_avg: string | number | null; rating_count: number; has_covered: boolean; deposit_type: string;
+      province: string | null; latitude: number | null; longitude: number | null;
     }[]
   >`SELECT * FROM app_public_catalog(${limit}::integer)`;
   return rows.map((r) => ({
@@ -52,6 +56,9 @@ export async function loadCatalog(limit = 300): Promise<CatalogEntry[]> {
     ratingCount: r.rating_count,
     hasCovered: r.has_covered,
     requiresDeposit: r.deposit_type !== "NONE",
+    province: r.province,
+    latitude: r.latitude,
+    longitude: r.longitude,
   }));
 }
 
@@ -80,8 +87,8 @@ export function filterCatalog(all: CatalogEntry[], f: CatalogFilter): CatalogEnt
   const q = f.q ? fold(f.q) : "";
   const city = f.ciudad ? fold(f.ciudad) : "";
   let out = all.filter((c) => {
-    if (q && !fold(`${c.name} ${c.city ?? ""} ${c.address ?? ""}`).includes(q)) return false;
-    if (city && !fold(`${c.city ?? ""} ${c.address ?? ""}`).includes(city)) return false;
+    if (q && !fold(`${c.name} ${c.city ?? ""} ${c.province ?? ""} ${c.address ?? ""}`).includes(q)) return false;
+    if (city && !fold(`${c.city ?? ""} ${c.province ?? ""} ${c.address ?? ""}`).includes(city)) return false;
     if (f.deporte && !c.sports.some((s) => SPORT_GROUPS[f.deporte!]!.includes(s))) return false;
     // precioMax en pesos por hora; los precios se guardan en centavos.
     if (f.precioMax && (c.minHourPrice === null || c.minHourPrice > f.precioMax * 100)) return false;

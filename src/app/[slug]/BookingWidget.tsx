@@ -380,8 +380,8 @@ export function BookingWidget(props: {
 }
 
 /**
- * Compartir el partido con amigos: comparte la FECHA y la página pública del
- * complejo, nunca el enlace privado de la reserva (que permite cancelarla).
+ * Compartir la reserva: comparte la FECHA y la página pública del complejo, nunca el
+ * enlace privado de la reserva (que permite cancelarla).
  */
 function ShareMatch({ text, url }: { text: string; url: string }) {
   const [msg, setMsg] = useState("");
@@ -403,7 +403,7 @@ function ShareMatch({ text, url }: { text: string; url: string }) {
           }
         }}
       >
-        Compartir con amigos
+        Compartir
       </button>
       <a className={`${ui.button} ${ui.buttonGhost}`} href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`} target="_blank" rel="noopener noreferrer">
         Enviar por WhatsApp

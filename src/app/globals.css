@@ -81,3 +81,7 @@ input[type="date"], input[type="time"] { color-scheme: dark; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Mapas (Leaflet + OpenStreetMap): tipografía de TURNUP; la atribución queda siempre visible. */
+.leaflet-container { font: inherit; background: var(--surface-2); }
+.leaflet-control-attribution { font-size: 11px; }

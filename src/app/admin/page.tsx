@@ -57,7 +57,7 @@ export default async function AdminPage() {
             <li>Emails: <strong>{o.system.emailProvider === "resend" ? "Resend configurado" : o.system.emailProvider === "disabled" ? "desactivados" : `modo ${o.system.emailProvider} (no se envían)`}</strong></li>
             {o.system.jobs.length === 0 ? <li>Tareas programadas: <strong>sin ejecuciones registradas</strong></li> : null}
             {o.system.jobs.map((j) => (
-              <li key={j.name}>Tarea <code>{j.name}</code>: {j.stale ? <strong className={ui.textDanger}>sin éxito hace más de 2 h</strong> : "OK"} · último éxito {j.lastSuccessAt ? j.lastSuccessAt.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "nunca"}{j.consecutiveFailures ? ` · ${j.consecutiveFailures} fallos seguidos` : ""}</li>
+              <li key={j.name}>Tarea <code>{j.name}</code>: {j.stale ? <strong className={ui.textDanger}>sin éxito hace más de 2 h</strong> : "OK"} · último éxito {j.lastSuccessAt ? j.lastSuccessAt.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hourCycle: "h23" }) : "nunca"}{j.consecutiveFailures ? ` · ${j.consecutiveFailures} fallos seguidos` : ""}</li>
             ))}
           </ul>
         </section>

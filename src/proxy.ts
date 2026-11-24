@@ -15,7 +15,8 @@ export function proxy(request: NextRequest) {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    // Teselas de OpenStreetMap para los mapas (solo imágenes; sin scripts de terceros).
+    "img-src 'self' data: blob: https://tile.openstreetmap.org",
     "font-src 'self'",
     `connect-src 'self'${isDev ? " ws:" : ""}`,
     "worker-src 'self'",
