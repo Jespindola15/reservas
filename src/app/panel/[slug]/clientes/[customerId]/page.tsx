@@ -9,6 +9,7 @@ import { hasPermission } from "@/modules/access/authorize";
 import { formatMoney } from "@/modules/booking/pricing";
 import { formatLocalDateTime } from "@/modules/booking/time";
 import { getCustomer } from "@/modules/customers/service";
+import { whatsappLink } from "@/lib/contact/whatsapp";
 import { saveCustomerNotesAction } from "../../actions";
 import { STATUS_LABEL } from "../../labels";
 
@@ -38,7 +39,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
         <Link href={`/panel/${slug}/calendario?nueva=1`} className={ui.button}>+ Nueva reserva</Link>
       </header>
       <section className={ui.grid3} style={{ marginBottom: "1rem" }}>
-        {[["Reservas", stats.total], ["Confirmadas / jugadas", stats.confirmed], ["Cancelaciones", stats.cancelled], ["Ausencias", stats.noShow]].map(([l, v]) => (
+        {[
+          ["Reservas", stats.total],
+          ["Visitas", stats.visits],
+          ["Última visita", stats.lastVisitAt ? formatLocalDateTime(stats.lastVisitAt, tz) : "—"],
+          ["Total abonado", formatMoney(stats.totalPaid, access.tenant.currency ?? "ARS")],
+          ["Cancelaciones", stats.cancelled],
+          ["Ausencias", stats.noShow],
+        ].map(([l, v]) => (
           <div key={l} className={ui.card}><div className={ui.stat}><span className={ui.statLabel}>{l}</span><span className={ui.statValue}>{v}</span></div></div>
         ))}
       </section>
@@ -46,6 +54,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
         <section className={ui.card} aria-labelledby="contacto">
           <div className={ui.cardHeader}><h2 id="contacto">Contacto</h2></div>
           <p>{c.phone ? <a href={`tel:${c.phone.replace(/[^0-9+]/g, "")}`}>{c.phone}</a> : "Sin teléfono"}</p>
+          {c.phone && whatsappLink(c.phone) ? (
+            <p><a className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={whatsappLink(c.phone)!} target="_blank" rel="noopener noreferrer">Escribir por WhatsApp</a></p>
+          ) : null}
           <p className={ui.muted}>{c.email ?? "Sin email"}</p>
           <p className={ui.faint}>Cliente desde {formatLocalDateTime(c.createdAt, tz)}</p>
           {hasPermission(access.role, "booking.manage") ? (

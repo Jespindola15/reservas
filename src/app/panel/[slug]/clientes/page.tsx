@@ -5,24 +5,29 @@ import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { isAppError } from "@/lib/errors";
 import { formatLocalDateTime } from "@/modules/booking/time";
-import { listCustomers } from "@/modules/customers/service";
+import { findDuplicateCustomers, listCustomers } from "@/modules/customers/service";
+import { formatMoney } from "@/modules/booking/pricing";
+import { whatsappLink } from "@/lib/contact/whatsapp";
 import { hasPermission } from "@/modules/access/authorize";
 
 export const metadata: Metadata = { title: "Clientes" };
 
-export default async function CustomersPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; page?: string }> }) {
+export default async function CustomersPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; page?: string; filtro?: string }> }) {
   const { slug } = await params;
   const sp = await searchParams;
   const access = await requireTenantPage(slug, "customer.read");
   if (!access) notFound();
   let data;
   try {
-    data = await listCustomers(access.ctx, { q: sp.q, page: sp.page ? Number(sp.page) : 1 });
+    data = await listCustomers(access.ctx, { q: sp.q, page: sp.page ? Number(sp.page) : 1, filter: sp.filtro });
   } catch (e) {
     if (!(isAppError(e) && e.code === "VALIDATION_ERROR")) throw e;
     data = await listCustomers(access.ctx, {});
   }
-  const pageHref = (p: number) => `?${new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), page: String(p) }).toString()}`;
+  const filter = sp.filtro ?? "all";
+  const pageHref = (p: number) => `?${new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.filtro ? { filtro: sp.filtro } : {}), page: String(p) }).toString()}`;
+  const duplicates = await findDuplicateCustomers(access.ctx);
+  const cur = access.tenant.currency ?? "ARS";
 
   return (
     <>
@@ -38,8 +43,15 @@ export default async function CustomersPage({ params, searchParams }: { params: 
       <form className={`${ui.card} ${ui.row}`} style={{ marginBottom: "1rem" }} role="search">
         <label className="sr-only" htmlFor="q">Buscar cliente</label>
         <input id="q" className={ui.input} name="q" defaultValue={sp.q} maxLength={80} placeholder="Buscar por nombre, teléfono o email" style={{ flex: 1, minWidth: 200 }} />
+        <label className="sr-only" htmlFor="filtro">Filtrar clientes</label>
+        <select id="filtro" name="filtro" className={ui.select} defaultValue={filter} style={{ width: "auto" }}>
+          <option value="all">Todos</option>
+          <option value="frequent">Frecuentes (4+ visitas en 90 días)</option>
+          <option value="inactive">Sin turnos hace 60 días</option>
+          <option value="noshow">Con ausencias</option>
+        </select>
         <button className={ui.button}>Buscar</button>
-        {sp.q ? <Link href={`/panel/${slug}/clientes`} className={`${ui.button} ${ui.buttonGhost}`}>Limpiar</Link> : null}
+        {sp.q || (sp.filtro && sp.filtro !== "all") ? <Link href={`/panel/${slug}/clientes`} className={`${ui.button} ${ui.buttonGhost}`}>Limpiar</Link> : null}
       </form>
       <section className={ui.card}>
         <div className={ui.cardHeader}>
@@ -47,19 +59,25 @@ export default async function CustomersPage({ params, searchParams }: { params: 
           <span className={ui.muted}>Solo clientes de este complejo</span>
         </div>
         {data.rows.length === 0 ? (
-          <p className={ui.empty}>{sp.q ? "No encontramos clientes con esa búsqueda." : "Todavía no hay clientes: se crean solos al registrar reservas."}</p>
+          <p className={ui.empty}>{sp.q || filter !== "all" ? "No encontramos clientes con esa búsqueda." : "Todavía no hay clientes: se crean solos al registrar reservas."}</p>
         ) : (
           <div className={ui.tableWrap}>
             <table className={`${ui.table} ${ui.tableResponsive}`}>
-              <thead><tr><th>Cliente</th><th>Contacto</th><th>Reservas</th><th>Cancelaciones</th><th>Última reserva</th></tr></thead>
+              <thead><tr><th>Cliente</th><th>Contacto</th><th>Reservas</th><th>Visitas</th><th>Cancel./ausencias</th><th>Última visita</th><th>Abonado</th></tr></thead>
               <tbody>
                 {data.rows.map((c) => (
                   <tr key={c.id}>
                     <td><Link href={`/panel/${slug}/clientes/${c.id}`}>{c.name}</Link></td>
-                    <td>{c.phone ?? "—"}<div className={ui.faint}>{c.email ?? ""}</div></td>
+                    <td>
+                      {c.phone ?? "—"}
+                      {c.phone && whatsappLink(c.phone) ? <> · <a href={whatsappLink(c.phone)!} target="_blank" rel="noopener noreferrer">WhatsApp</a></> : null}
+                      <div className={ui.faint}>{c.email ?? ""}</div>
+                    </td>
                     <td>{c.bookings}</td>
+                    <td>{c.visits}</td>
                     <td>{c.cancellations > 0 ? <span className={`${ui.badge} ${ui.badgeCANCELLED}`}>{c.cancellations}</span> : "0"}</td>
-                    <td>{c.lastBookingAt ? formatLocalDateTime(c.lastBookingAt, access.tenant.timezone) : "—"}</td>
+                    <td>{c.lastVisitAt ? formatLocalDateTime(c.lastVisitAt, access.tenant.timezone) : "—"}</td>
+                    <td>{formatMoney(c.totalPaid, cur)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -73,6 +91,24 @@ export default async function CustomersPage({ params, searchParams }: { params: 
           </nav>
         ) : null}
       </section>
+      {duplicates.length > 0 ? (
+        <section className={ui.card} style={{ marginTop: "1rem" }} aria-labelledby="duplicados">
+          <div className={ui.cardHeader}>
+            <h2 id="duplicados">Posibles duplicados</h2>
+            <span className={ui.muted}>Comparten teléfono o email. Revisalos: no se unen solos.</span>
+          </div>
+          <ul className={ui.stack} style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {duplicates.map((g) => (
+              <li key={g.customers.map((c) => c.id).join("-")}>
+                <span className={ui.faint}>{g.reason === "phone" ? "Mismo teléfono" : "Mismo email"}: </span>
+                {g.customers.map((c, i) => (
+                  <span key={c.id}>{i > 0 ? " · " : ""}<Link href={`/panel/${slug}/clientes/${c.id}`}>{c.name}</Link></span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

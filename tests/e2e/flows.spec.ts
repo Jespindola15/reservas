@@ -457,3 +457,27 @@ test("calendario: filtros, hora actual y reprogramar arrastrando un turno", asyn
   const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
   if (hour >= 8) await expect(page.locator('[class*="nowLine"]').first()).toBeAttached();
 });
+
+test("dueño: estadísticas por período y clientes con filtros; personal no ve estadísticas @mobile", async ({ page }) => {
+  await login(page, "duenio@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  await page.goto("/panel/futbol-norte/estadisticas?period=week");
+  await expect(page.getByRole("heading", { name: "Estadísticas" })).toBeVisible();
+  await expect(page.getByText("Cobrado", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pendiente de cobro")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Turnos por hora de inicio" })).toBeVisible();
+  await page.goto("/panel/futbol-norte/estadisticas?period=custom&from=2030-03-10&to=2030-03-01");
+  await expect(page.getByRole("status")).toContainText("rango de fechas válido");
+
+  await page.goto("/panel/futbol-norte/clientes?filtro=frequent");
+  await expect(page.getByRole("heading", { name: "Clientes", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Filtrar clientes")).toHaveValue("frequent");
+  await page.getByLabel("Filtrar clientes").selectOption("all");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page).toHaveURL(/filtro=all/);
+  await page.context().clearCookies();
+
+  await login(page, "staff@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  expect((await page.goto("/panel/futbol-norte/estadisticas"))?.status()).toBe(404);
+});

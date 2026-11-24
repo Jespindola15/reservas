@@ -77,12 +77,31 @@ export async function exportCustomersCsv(ctx: TenantContext, actor: Actor) {
     const rows = await tx.customer.findMany({
       where: { tenantId: ctx.tenantId },
       orderBy: { name: "asc" },
-      select: { name: true, phone: true, email: true, notes: true, createdAt: true, _count: { select: { bookings: true } } },
+      select: { id: true, name: true, phone: true, email: true, notes: true, createdAt: true, _count: { select: { bookings: true } } },
     });
+    const now = new Date();
+    const stats = await tx.$queryRaw<{ customer_id: string; visits: bigint; cancels: bigint; noshows: bigint; last_visit: Date | null; paid: bigint }[]>`
+      SELECT b.customer_id,
+        count(*) FILTER (WHERE b.status IN ('CONFIRMED','COMPLETED') AND b.starts_at < ${now}) AS visits,
+        count(*) FILTER (WHERE b.status = 'CANCELLED') AS cancels,
+        count(*) FILTER (WHERE b.status = 'NO_SHOW') AS noshows,
+        max(b.starts_at) FILTER (WHERE b.status IN ('CONFIRMED','COMPLETED') AND b.starts_at < ${now}) AS last_visit,
+        coalesce((SELECT sum(CASE WHEN p.kind = 'REFUND' THEN -p.amount ELSE p.amount END)
+                  FROM booking_payments p JOIN bookings b2 ON b2.tenant_id = p.tenant_id AND b2.id = p.booking_id
+                  WHERE p.tenant_id = ${ctx.tenantId}::uuid AND b2.customer_id = b.customer_id), 0)::bigint AS paid
+      FROM bookings b WHERE b.tenant_id = ${ctx.tenantId}::uuid GROUP BY b.customer_id`;
+    const by = new Map(stats.map((s) => [s.customer_id, s]));
     await audit(tx, { tenantId: ctx.tenantId, actor, action: "data.exported", entityType: "customer", entityId: null, metadata: { kind: "customers", rows: rows.length } });
     return toCsv(
-      ["Nombre", "Teléfono", "Email", "Reservas", "Notas", "Alta (UTC)"],
-      rows.map((r) => [r.name, r.phone ?? "", r.email ?? "", r._count.bookings, r.notes ?? "", r.createdAt]),
+      ["Nombre", "Teléfono", "Email", "Reservas", "Notas", "Alta (UTC)", "Visitas", "Cancelaciones", "Ausencias", "Última visita (UTC)", "Total abonado"],
+      rows.map((r) => {
+        const s = by.get(r.id);
+        return [
+          r.name, r.phone ?? "", r.email ?? "", r._count.bookings, r.notes ?? "", r.createdAt,
+          Number(s?.visits ?? 0), Number(s?.cancels ?? 0), Number(s?.noshows ?? 0), s?.last_visit ?? "",
+          (Number(s?.paid ?? 0) / 100).toFixed(2),
+        ];
+      }),
     );
   });
 }
