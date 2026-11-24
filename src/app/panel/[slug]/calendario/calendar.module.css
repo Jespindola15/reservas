@@ -7,7 +7,7 @@
 .legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .chip { display: inline-flex; align-items: center; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border); }
 
-.manual { margin-bottom: 1rem; border-color: rgb(200 244 59 / 35%); }
+.manual { margin-bottom: 1rem; border-color: rgb(160 248 2 / 35%); }
 
 .scroller { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-2); }
 .dayGrid { display: grid; min-width: max-content; }
@@ -26,7 +26,7 @@
   position: absolute; left: 4px; right: 4px; border-radius: 8px; display: flex; align-items: center; padding: 0 0.5rem;
   font-size: 0.75rem; color: transparent; text-decoration: none; border: 1px dashed transparent;
 }
-.freeCell:hover, .freeCell:focus-visible { color: var(--lime); border-color: rgb(200 244 59 / 50%); background: var(--lime-soft); }
+.freeCell:hover, .freeCell:focus-visible { color: var(--lime); border-color: rgb(160 248 2 / 50%); background: var(--lime-soft); }
 
 .event {
   position: absolute; left: 4px; right: 4px; z-index: 2; overflow: hidden; border-radius: 9px; padding: 0.35rem 0.55rem;
@@ -42,7 +42,7 @@
 .COMPLETED { background: #10203f; border-color: var(--blue); color: #d4e3ff; }
 .NO_SHOW { background: #3a1616; border-color: var(--danger); color: #ffd0d0; }
 .block { background: repeating-linear-gradient(135deg, #1a2031, #1a2031 8px, #151a29 8px, #151a29 16px); border-color: var(--text-faint); color: var(--text-muted); }
-.free { color: var(--lime); border-style: dashed; border-color: rgb(200 244 59 / 45%); }
+.free { color: var(--lime); border-style: dashed; border-color: rgb(160 248 2 / 45%); }
 
 .weekGrid { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 0.6rem; overflow-x: auto; }
 .weekDay { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem; min-height: 220px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); }

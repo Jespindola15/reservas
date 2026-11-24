@@ -64,6 +64,6 @@
     padding: 0.35rem 0; border-radius: 10px; font-size: 0.7rem; font-weight: 700;
     color: var(--text-muted); text-decoration: none; min-height: 48px; justify-content: center;
   }
-  .tabActive { color: var(--lime); background: rgb(200 244 59 / 8%); }
+  .tabActive { color: var(--lime); background: rgb(160 248 2 / 8%); }
   .tab:focus-visible, .tabActive:focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; }
 }

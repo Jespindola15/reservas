@@ -6,13 +6,8 @@
 .nav { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 
 /* Logo TURNUP */
-.brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--text); text-decoration: none; font-weight: 900; letter-spacing: 0.04em; font-size: 1.05rem; }
-.brandMark {
-  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
-  background: var(--lime); color: var(--on-lime); font-weight: 900; font-size: 0.95rem;
-  box-shadow: 0 0 0 3px rgb(200 244 59 / 15%);
-}
-.brandWord span { color: var(--lime); }
+.brand { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; line-height: 0; border-radius: 8px; }
+.brand:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
 
 /* ---------------------------------------------------------------- Superficies */
 .card { background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 1.25rem; }
@@ -58,7 +53,7 @@
 }
 .input::placeholder, .textarea::placeholder { color: var(--text-faint); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
-.input:focus, .select:focus, .textarea:focus { border-color: var(--lime); outline: none; box-shadow: 0 0 0 3px rgb(200 244 59 / 15%); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--lime); outline: none; box-shadow: 0 0 0 3px rgb(160 248 2 / 15%); }
 .textarea { min-height: 84px; resize: vertical; }
 .checkbox { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.9rem; }
 .checkbox input { width: 18px; height: 18px; accent-color: var(--lime); }
@@ -68,7 +63,7 @@
 /* ---------------------------------------------------------------- Mensajes */
 .alert { padding: 0.7rem 0.9rem; border-radius: 10px; border: 1px solid var(--border); font-size: 0.9rem; margin: 0; }
 .alertError { background: var(--danger-soft); border-color: rgb(255 107 107 / 30%); color: #ffd6d6; }
-.alertOk { background: var(--lime-soft); border-color: rgb(200 244 59 / 30%); color: #eaffb8; }
+.alertOk { background: var(--lime-soft); border-color: rgb(160 248 2 / 30%); color: #eaffb8; }
 .alertWarn { background: var(--warning-soft); border-color: rgb(255 194 75 / 30%); color: #ffe7b3; }
 .alertInfo { background: var(--blue-soft); border-color: rgb(76 141 255 / 30%); color: #d6e4ff; }
 

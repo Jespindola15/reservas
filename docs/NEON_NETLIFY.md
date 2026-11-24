@@ -147,8 +147,7 @@ Sin valores secretos. Todo verificado contra los servicios reales.
   escritura directa en `court_allocations` y `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` rechazadas (42501).
 - Superadministrador creado con `scripts/ops/create-superadmin.ts` (hash scrypt de Better Auth; queda en auditoría).
 - La API key temporal de Neon fue **revocada** al terminar.
-- Nota: el proyecto tiene la **Data API** de Neon activada sobre la base `neondb` (vacía). TURNUP usa la base
-  `turnup`, que la Data API no expone. Si no la vas a usar, desactivala en *Data API* para reducir superficie.
+- **Data API** de Neon (sobre `neondb`, sin uso en TURNUP): **desactivada** el 24/11/2026.
 
 **Netlify** (sitio `turn-up-sn`, `https://turn-up-sn.netlify.app`, repo `Jespindola15/reservas`, rama `main`)
 - Variables (contexto **Production**): `DATABASE_URL`*, `BETTER_AUTH_SECRET`*, `CRON_SECRET`* (*secretas, ámbitos
@@ -165,3 +164,18 @@ leídos por las funciones serverless (persistencia).
 **Próximas migraciones**: la contraseña de `reservas_owner` no se guardó. Para migrar en el futuro, en el SQL Editor
 de Neon (base `neondb`): `ALTER ROLE reservas_owner PASSWORD '<nueva, 32+ caracteres>';`, armar la URL directa y
 seguir §4. Antes, crear otra rama de respaldo.
+
+### Verificación de aislamiento en producción (24/11/2026)
+Con autorización del dueño se crearon dos complejos temporales (`zz-prueba-aislamiento-a/b`), dos dueños
+`@turnup-prueba.invalid` y una reserva en cada uno, por la API pública real. 21/21 controles OK: cada dueño solo
+ve, lista y exporta lo suyo; 404 en paneles ajenos y en `/admin`; 403 al exportar datos ajenos; reservar una
+cancha de otro complejo → 404; doble turno en la misma cancha → 409; el mismo horario en complejos distintos no
+choca. Luego se borraron **solo** esas filas (simulación previa con rollback; ninguna otra tabla afectada).
+
+### Consumo de planes gratuitos (estimación)
+- **Neon Free** (100 CU-h/mes por proyecto, compute 0,25–2 CU, se suspende a los 5 min): la tarea cada 30 min
+  despierta la base ~48 veces/día ≈ 4 h activas ≈ **30 CU-h/mes** de base. Quedan ~70 CU-h ≈ 280 h activas a
+  0,25 CU. Con uso comercial diario (p. ej. 12 h/día activas) se supera el plan: pasar a Launch o bajar el máximo de CU.
+- **Netlify Free clásico** (cuota compartida por TODOS los sitios de la cuenta): 125.000 invocaciones de
+  funciones/mes, 100 GB-h de funciones, 100 GB de ancho de banda, 300 min de build. Cada página o llamada a la API
+  de TURNUP es una invocación (todas son dinámicas); la tarea programada suma ~2.900/mes.

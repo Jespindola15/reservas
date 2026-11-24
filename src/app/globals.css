@@ -16,9 +16,9 @@
   --text-muted: #9aa8c4;
   --text-faint: #6c7a98;
 
-  --lime: #c8f43b;
-  --lime-strong: #b3e01f;
-  --lime-soft: rgb(200 244 59 / 12%);
+  --lime: #a0f802;
+  --lime-strong: #8bdc00;
+  --lime-soft: rgb(160 248 2 / 12%);
   --on-lime: #0a1004;
 
   --blue: #4c8dff;
@@ -27,7 +27,7 @@
   --danger-soft: rgb(255 107 107 / 13%);
   --warning: #ffc24b;
   --warning-soft: rgb(255 194 75 / 13%);
-  --focus: #c8f43b;
+  --focus: #a0f802;
 
   /* Alias usados por componentes de la Fase 1 */
   --brand: var(--lime);
@@ -50,7 +50,7 @@ html, body { margin: 0; padding: 0; }
 body {
   background:
     radial-gradient(1200px 600px at 85% -10%, rgb(76 141 255 / 10%), transparent 60%),
-    radial-gradient(900px 500px at -10% 0%, rgb(200 244 59 / 6%), transparent 55%),
+    radial-gradient(900px 500px at -10% 0%, rgb(160 248 2 / 6%), transparent 55%),
     var(--bg);
   background-attachment: fixed;
   color: var(--text);

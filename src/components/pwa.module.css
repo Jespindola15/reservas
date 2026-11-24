@@ -21,7 +21,7 @@
   border: 0;
   border-radius: 10px;
   padding: 0.5rem 0.9rem;
-  background: var(--lime, #c8f43b);
+  background: var(--lime, #a0f802);
   color: var(--on-lime, #0a1004);
   font-weight: 700;
   cursor: pointer;
@@ -33,5 +33,5 @@
   padding: 0.4rem 0.5rem;
   cursor: pointer;
 }
-.primary:focus-visible, .ghost:focus-visible { outline: 2px solid var(--lime, #c8f43b); outline-offset: 2px; }
+.primary:focus-visible, .ghost:focus-visible { outline: 2px solid var(--lime, #a0f802); outline-offset: 2px; }
 @media (max-width: 960px) { .bar { bottom: calc(5.25rem + env(safe-area-inset-bottom)); } }

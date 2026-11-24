@@ -5,7 +5,7 @@
 .lead { color: var(--text); opacity: 0.9; max-width: 60ch; margin: 0 0 0.4rem; }
 .logoFallback {
   width: 76px; height: 76px; flex: none; border-radius: 18px; display: grid; place-items: center;
-  font-size: 2.2rem; font-weight: 900; background: var(--lime); color: var(--on-lime); box-shadow: 0 0 0 6px rgb(200 244 59 / 12%);
+  font-size: 2.2rem; font-weight: 900; background: var(--lime); color: var(--on-lime); box-shadow: 0 0 0 6px rgb(160 248 2 / 12%);
 }
 @media (max-width: 520px) { .heroInner { align-items: flex-start; } .logoFallback { width: 56px; height: 56px; font-size: 1.6rem; } }
 
@@ -52,11 +52,11 @@
 .slotTime small { font-weight: 500; color: var(--text-muted); }
 .slotPrice { font-size: 0.82rem; color: var(--text-muted); }
 
-.checkout { scroll-margin-top: 80px; border-color: rgb(200 244 59 / 40%); }
+.checkout { scroll-margin-top: 80px; border-color: rgb(160 248 2 / 40%); }
 .summary { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; align-items: center; padding: 0.8rem 1rem; margin: 0.5rem 0 1rem; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--border); }
 .total { margin-left: auto; font-size: 1.25rem; font-weight: 900; color: var(--lime); }
 
-.success { max-width: 640px; margin: 0 auto; border-color: rgb(200 244 59 / 40%); }
+.success { max-width: 640px; margin: 0 auto; border-color: rgb(160 248 2 / 40%); }
 .code { font-family: var(--mono); font-size: 1.35rem; letter-spacing: 0.1em; color: var(--lime); }
 .linkBox { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; margin: 1rem 0; border-radius: 12px; background: var(--bg-2); border: 1px dashed var(--border-strong); }
 .linkText { word-break: break-all; font-size: 0.8rem; color: var(--text-muted); }
