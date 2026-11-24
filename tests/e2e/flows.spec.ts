@@ -590,7 +590,7 @@ test("jugador con cuenta: registro, explorar, ficha, favorito, reserva con datos
   await turn.getByRole("button", { name: "Cancelar turno" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sí, cancelar" }).click();
   // El turno pasa al historial como cancelado (el botón desaparece).
-  await expect(page.getByRole("region", { name: "Historial" }).getByRole("listitem").filter({ hasText: "Pádel Centro" }).first()).toContainText("Cancelada");
+  await expect(page.getByRole("region", { name: "Canceladas y vencidas" }).getByRole("listitem").filter({ hasText: "Pádel Centro" }).first()).toContainText("Cancelada");
 
   await page.goto("/perfil");
   await expect(page.getByRole("region", { name: "Complejos favoritos" }).getByRole("link", { name: /Pádel Centro/ })).toBeVisible();
@@ -653,4 +653,100 @@ test("ubicación: el dueño marca el complejo en el mapa y el jugador ordena por
   await expect(page.getByText(/Ordenado por cercanía/)).toBeVisible();
   await expect(page.getByRole("listitem").first()).toContainText("Pádel Centro");
   await expect(page.getByRole("listitem").first()).toContainText(/📍 a \d+/);
+});
+
+// ---------------------------------------------------------------------------- Fase 5
+
+test("regresión: reservar en la página pública con la sesión de un dueño de otro complejo", async ({ page }) => {
+  // Reproducción del error reportado: un dueño con sesión abierta reservando en otro complejo.
+  const posts: number[] = [];
+  page.on("response", (r) => { if (r.url().includes("/bookings") && r.request().method() === "POST") posts.push(r.status()); });
+  await login(page, "duenio@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  await page.goto("/padel-centro?desde=marketplace");
+  await page.getByRole("radiogroup", { name: "Fecha" }).getByRole("radio").nth(3).click();
+  await page.getByRole("radio", { name: /^Cancha 2/ }).click();
+  await page.getByRole("radio", { name: "60 min" }).click();
+  await page.getByRole("button", { name: /^18:00/ }).click();
+  await page.getByLabel("Teléfono").fill("11 5555 0000");
+  await page.getByRole("button", { name: "Confirmar reserva" }).click();
+  await expect(page.getByRole("heading", { name: /Listo/ })).toBeVisible();
+  expect(posts).toEqual([201]);
+});
+
+test("transferencia: el dueño configura cobros, el jugador reserva e informa, el dueño verifica", async ({ page, browser }) => {
+  await login(page, "duenio@deportivo-sur.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/**");
+  await page.goto("/panel/complejo-deportivo-sur/cobros");
+  await page.locator('select[name="depositType"]').selectOption("FIXED");
+  await page.getByRole("textbox", { name: /^Valor de la seña/ }).fill("5000");
+  await page.getByLabel("Alias").fill("deportivo.sur");
+  await page.getByLabel("Titular de la cuenta").fill("Deportivo Sur SRL");
+  await page.getByRole("button", { name: "Guardar datos de cobro" }).click();
+  await page.getByRole("button", { name: "Sí, guardar" }).click();
+  await expect(page.getByText("Datos de cobro guardados.")).toBeVisible();
+  await expect(page.getByText("Vista previa para el jugador")).toBeVisible();
+  await expect(page.getByText("deportivo.sur").first()).toBeVisible();
+
+  const player = await browser.newPage();
+  await player.goto("/complejo-deportivo-sur");
+  await player.getByRole("radiogroup", { name: "Fecha" }).getByRole("radio").nth(1).click();
+  await player.getByRole("radio", { name: /^Pádel 1/ }).click();
+  await player.getByRole("radio", { name: "60 min" }).click();
+  await player.getByRole("button", { name: /^19:00/ }).click();
+  await expect(player.getByText("Seña requerida")).toBeVisible();
+  await player.getByLabel("Nombre y apellido").fill("Tomás Transferencia");
+  await player.getByLabel("Teléfono").fill("11 5555-3333");
+  await player.getByLabel("Email").fill("tomas@example.com");
+  await player.getByRole("radio", { name: "No" }).check();
+  await player.getByLabel("Nombre del titular de la cuenta que transfiere").fill("Marta Titular");
+  await player.getByRole("button", { name: "Reservar y ver datos para transferir" }).click();
+  await expect(player.getByText(/Tu turno todavía no está confirmado/)).toBeVisible();
+  await expect(player.getByText("deportivo.sur")).toBeVisible();
+  await expect(player.getByText("Tiempo para transferir")).toBeVisible();
+  const code = (await player.locator("strong").filter({ hasText: /^[A-HJ-NP-Z2-9]{8}$/ }).first().innerText()).trim();
+  await player.getByLabel("Número de operación (opcional)").fill("998877");
+  await player.getByRole("button", { name: "Ya realicé la transferencia" }).click();
+  await player.getByRole("button", { name: "Sí, ya transferí" }).click();
+  await expect(player.getByText(/avisamos al complejo/)).toBeVisible();
+  await player.close();
+
+  await page.goto("/panel/complejo-deportivo-sur/transferencias");
+  const card = page.getByRole("listitem").filter({ hasText: code });
+  await expect(card).toContainText("Marta Titular");
+  await expect(card).toContainText("998877");
+  await card.getByText("Confirmar pago").click();
+  await card.getByRole("button", { name: "Confirmar: el dinero llegó" }).click();
+  await page.getByRole("button", { name: "Sí, verifiqué el pago" }).click();
+  await expect(page.getByText(new RegExp(`Pago verificado. La reserva ${code}`))).toBeVisible();
+  // Avisos internos del complejo con contador.
+  await page.goto("/panel/complejo-deportivo-sur/avisos");
+  await expect(page.getByText(new RegExp(`Transferencia informada · ${code}`))).toBeVisible();
+});
+
+test("superadmin suspende a un jugador: su sesión deja de funcionar al instante", async ({ page, browser }) => {
+  const email = `suspendible-${Date.now()}@example.com`;
+  const player = await browser.newPage();
+  await player.goto("/cuenta/registro");
+  await player.getByLabel("Nombre y apellido").fill("Pepe Suspendible");
+  await player.getByLabel("Email").fill(email);
+  await player.getByLabel("Contraseña (mín. 12 caracteres)").fill("clave-jugador-123");
+  await player.getByLabel("Repetir contraseña").fill("clave-jugador-123");
+  await player.getByLabel(/Acepto los términos/).check();
+  await player.getByRole("button", { name: "Crear cuenta" }).click();
+  await expect(player.getByRole("heading", { name: "Hola, Pepe" })).toBeVisible();
+
+  await loginSuperadmin(page);
+  await page.goto(`/admin/usuarios?q=${encodeURIComponent(email)}`);
+  await page.getByRole("link", { name: "Pepe Suspendible" }).click();
+  await page.getByLabel("Motivo (queda registrado)").fill("Prueba automatizada de suspensión");
+  await page.getByRole("button", { name: "Suspender usuario" }).click();
+  await page.getByRole("button", { name: "Suspender", exact: true }).click();
+  await expect(page.getByText(/Usuario suspendido/)).toBeVisible();
+  // Las contraseñas y sesiones nunca se muestran.
+  await expect(page.getByText(/clave-jugador-123/)).toHaveCount(0);
+
+  await player.goto("/mis-turnos");
+  await expect(player.getByText("Ingresá para ver tus reservas en todos los complejos.")).toBeVisible();
+  await player.close();
 });

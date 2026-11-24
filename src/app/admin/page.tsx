@@ -9,7 +9,7 @@ import { listSubscriptionPayments, platformOverview, tenantActivity } from "@/mo
 import { listTenantsForPlatform } from "@/modules/platform/service";
 import { SignOutButton } from "../panel/SignOutButton";
 import { AdminNav } from "./AdminNav";
-import { assignAdminAction, createTenantAction, recordSubscriptionPaymentAction, setTenantStatusAction } from "./actions";
+import { assignAdminAction, createTenantAction, recordSubscriptionPaymentAction } from "./actions";
 
 const SUB_LABEL: Record<string, string> = { TRIAL: "Prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (en gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
 const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "—");
@@ -63,7 +63,7 @@ export default async function AdminPage() {
         </section>
 
         <section className={ui.card} aria-labelledby="complejos">
-          <h2 id="complejos">Complejos</h2>
+          <div className={ui.spread}><h2 id="complejos">Complejos</h2><Link href="/admin/complejos">Buscar y filtrar →</Link></div>
           <div className={ui.tableWrap}>
           <table className={`${ui.table} ${ui.tableResponsive}`}>
             <thead><tr><th>Complejo</th><th>Estado</th><th>Canchas / Reservas / Usuarios</th><th>Actividad (30 días)</th><th>Suscripción</th><th><span className="sr-only">Acciones</span></th></tr></thead>
@@ -72,8 +72,8 @@ export default async function AdminPage() {
                 const sub = t.subscriptions[0];
                 return (
                   <tr key={t.id}>
-                    <td><strong>{t.name}</strong><div className={ui.muted}>/{t.slug} · alta {day(t.createdAt)}</div></td>
-                    <td><span className={`${ui.badge} ${t.status === "ACTIVE" ? ui.badgeCONFIRMED : ui.badgeCANCELLED}`}>{t.status === "ACTIVE" ? "Activo" : "Suspendido"}</span></td>
+                    <td><Link href={`/admin/complejos/${t.id}`}><strong>{t.name}</strong></Link><div className={ui.muted}>/{t.slug} · alta {day(t.createdAt)}</div></td>
+                    <td><span className={`${ui.badge} ${t.status === "ACTIVE" ? ui.badgeCONFIRMED : ui.badgeCANCELLED}`}>{t.archivedAt ? "Archivado" : t.status === "ACTIVE" ? "Activo" : "Suspendido"}</span></td>
                     <td>{t._count.courts} / {t._count.bookings} / {t._count.memberships}</td>
                     <td>{activity.bookings30d.get(t.id) ?? 0} reservas<div className={ui.faint}>última {day(activity.lastBookingAt.get(t.id))}</div></td>
                     <td>
@@ -81,16 +81,7 @@ export default async function AdminPage() {
                       <div className={ui.faint}>último pago {day(activity.lastPaymentAt.get(t.id))}</div>
                     </td>
                     <td>
-                      <ActionForm
-                        action={setTenantStatusAction}
-                        submitLabel={t.status === "ACTIVE" ? "Suspender" : "Activar"}
-                        variant={t.status === "ACTIVE" ? "danger" : "secondary"}
-                        small
-                        confirm={t.status === "ACTIVE" ? { title: `¿Suspender ${t.name}?`, body: "Dejará de recibir reservas y su panel quedará inaccesible." } : undefined}
-                      >
-                        <input type="hidden" name="tenantId" value={t.id} />
-                        <input type="hidden" name="status" value={t.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"} />
-                      </ActionForm>
+                      <Link className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`} href={`/admin/complejos/${t.id}`}>Administrar</Link>
                     </td>
                   </tr>
                 );

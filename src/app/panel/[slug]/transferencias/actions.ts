@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { runAction, type ActionResult } from "@/lib/actions";
 import { requireTenant } from "@/lib/auth/dal";
 import { setBookingInternalNotes } from "@/modules/booking/service";
@@ -21,16 +22,22 @@ function refresh(slug: string) {
 }
 
 export async function confirmTransferAction(slug: string, bookingId: string, version: number, _p: ActionResult, fd: FormData): Promise<ActionResult> {
-  return runAction("transfer.confirm", async () => {
+  let done: string | null = null;
+  const res = await runAction("transfer.confirm", async () => {
     const { ctx, user } = await requireTenant(slug, "payments.verify");
     const r = await confirmTransfer(ctx, { bookingId, expectedVersion: version, receivedAmount: str(fd, "receivedAmount") ?? "", note: str(fd, "note") }, { type: "USER", userId: user.id });
     refresh(slug);
+    done = r.code;
     return `Pago verificado. La reserva ${r.code} quedó confirmada.`;
   });
+  // La tarjeta sale de la lista al confirmarse: el resultado se muestra arriba de la página.
+  if (done) redirect(`/panel/${slug}/transferencias?verificada=${done}`);
+  return res;
 }
 
 export async function rejectTransferAction(slug: string, bookingId: string, version: number, _p: ActionResult, fd: FormData): Promise<ActionResult> {
-  return runAction("transfer.reject", async () => {
+  let done: string | null = null;
+  const res = await runAction("transfer.reject", async () => {
     const { ctx, user } = await requireTenant(slug, "payments.verify");
     const r = await rejectTransfer(
       ctx,
@@ -38,8 +45,11 @@ export async function rejectTransferAction(slug: string, bookingId: string, vers
       { type: "USER", userId: user.id },
     );
     refresh(slug);
+    done = r.code;
     return `Reserva ${r.code} rechazada. El horario quedó libre.`;
   });
+  if (done) redirect(`/panel/${slug}/transferencias?rechazada=${done}`);
+  return res;
 }
 
 export async function openIncidentAction(slug: string, bookingId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {

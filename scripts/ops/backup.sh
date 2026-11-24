@@ -18,6 +18,7 @@ mkdir -p "$BACKUP_DIR"
 umask 077
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$BACKUP_DIR/turnup-$stamp.dump"
+# Con RLS activo, pg_dump necesita un rol con BYPASSRLS (si no, aborta en vez de exportar tablas vacías).
 pg_dump --dbname="$BACKUP_DATABASE_URL" --format=custom --compress=9 --no-owner --no-privileges --file="$out.partial"
 mv "$out.partial" "$out"
 sha256sum "$out" > "$out.sha256"

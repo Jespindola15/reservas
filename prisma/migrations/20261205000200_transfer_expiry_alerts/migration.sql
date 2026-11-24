@@ -100,3 +100,21 @@ END $$;
 
 REVOKE EXECUTE ON FUNCTION app_transfer_review_alerts(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app_transfer_review_alerts(integer) TO app_runtime;
+
+-- ---------------------------------------------------------------- Corrección: imágenes en R2
+-- La regla de court_images usaba la repetición {10,300} y PostgreSQL admite como máximo 255:
+-- toda imagen de cancha guardada en almacenamiento de objetos fallaba con "invalid repetition
+-- count". Mismo criterio (10 a 300 caracteres) expresado con char_length.
+ALTER TABLE "court_images" DROP CONSTRAINT "court_images_location";
+ALTER TABLE "court_images"
+  ADD CONSTRAINT "court_images_location" CHECK (
+    ("storage" = 'DATABASE' AND "data" IS NOT NULL)
+    OR ("storage" = 'OBJECT' AND "object_key" IS NOT NULL AND char_length("object_key") BETWEEN 10 AND 300 AND "object_key" ~ '^[a-z0-9/._-]+$')
+  );
+-- Misma validación de clave para los recursos del complejo.
+ALTER TABLE "tenant_assets" DROP CONSTRAINT "tenant_assets_location";
+ALTER TABLE "tenant_assets"
+  ADD CONSTRAINT "tenant_assets_location" CHECK (
+    ("storage" = 'DATABASE' AND "data" IS NOT NULL)
+    OR ("storage" = 'OBJECT' AND "object_key" IS NOT NULL AND char_length("object_key") BETWEEN 10 AND 300 AND "object_key" ~ '^[a-z0-9/._-]+$')
+  );

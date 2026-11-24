@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/lib/actions";
 import { requireSuperadmin } from "@/lib/auth/dal";
+import { AppError } from "@/lib/errors";
 import { parseOrThrow } from "@/lib/validation";
 import { assignTenantAdmin, createTenant, setTenantStatus } from "@/modules/platform/service";
 
@@ -47,7 +48,9 @@ export async function setTenantStatusAction(_p: ActionResult, fd: FormData) {
   return runAction("platform.setTenantStatus", async () => {
     const user = await requireSuperadmin();
     const input = parseOrThrow(statusForm, Object.fromEntries(fd));
-    await setTenantStatus(user, input.tenantId, input.status, input.reason || "sin motivo");
+    if (input.status === "SUSPENDED" && input.reason.length < 5) throw new AppError("VALIDATION_ERROR", { fields: ["reason"] });
+    await setTenantStatus(user, input.tenantId, input.status, input.reason || "reactivado");
+    revalidatePath("/admin/complejos", "layout");
     revalidatePath("/admin");
     return input.status === "ACTIVE" ? "Complejo activado." : "Complejo suspendido.";
   });
@@ -124,5 +127,119 @@ export async function moderateReviewAction(reviewId: string, decision: "HIDE" | 
     await moderateReview(user, reviewId, decision, String(fd.get("note") ?? ""));
     revalidatePath("/admin/moderacion");
     return decision === "HIDE" ? "Opinión ocultada." : decision === "RESTORE" ? "Opinión restaurada." : "Denuncia descartada: la opinión sigue publicada.";
+  });
+}
+
+// ---------------------------------------------------------------- Usuarios
+// Suspender cierra todas las sesiones. Anonimizar es irreversible y exige escribir el email.
+
+export async function suspendUserAction(userId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.suspend", async () => {
+    const user = await requireSuperadmin();
+    const { suspendUser } = await import("@/modules/platform/users");
+    const r = await suspendUser(user, userId, String(fd.get("reason") ?? ""));
+    revalidatePath("/admin/usuarios", "layout");
+    return `Usuario suspendido. Se cerraron ${r.sessionsRevoked} sesión(es).`;
+  });
+}
+
+export async function reactivateUserAction(userId: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.reactivate", async () => {
+    const user = await requireSuperadmin();
+    const { reactivateUser } = await import("@/modules/platform/users");
+    await reactivateUser(user, userId);
+    revalidatePath("/admin/usuarios", "layout");
+    return "Usuario reactivado.";
+  });
+}
+
+export async function revokeSessionsAction(userId: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.revoke", async () => {
+    const user = await requireSuperadmin();
+    const { revokeUserSessions } = await import("@/modules/platform/users");
+    const n = await revokeUserSessions(user, userId);
+    revalidatePath("/admin/usuarios", "layout");
+    return `Se cerraron ${n} sesión(es).`;
+  });
+}
+
+export async function passwordRecoveryAction(userId: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.recovery", async () => {
+    const user = await requireSuperadmin();
+    const { sendPasswordRecovery } = await import("@/modules/platform/users");
+    await sendPasswordRecovery(user, userId);
+    return "Se encoló el correo de recuperación (se envía cuando el proveedor de email está configurado).";
+  });
+}
+
+export async function anonymizeUserAction(userId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.anonymize", async () => {
+    const user = await requireSuperadmin();
+    const { anonymizeUser } = await import("@/modules/platform/users");
+    await anonymizeUser(user, userId, String(fd.get("confirmEmail") ?? ""));
+    revalidatePath("/admin/usuarios", "layout");
+    return "Cuenta eliminada (datos personales anonimizados). El historial de reservas de los complejos se conservó.";
+  });
+}
+
+export async function renameUserAction(userId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.user.rename", async () => {
+    const user = await requireSuperadmin();
+    const { updateUserName } = await import("@/modules/platform/users");
+    await updateUserName(user, userId, String(fd.get("name") ?? ""));
+    revalidatePath("/admin/usuarios", "layout");
+    return "Nombre actualizado.";
+  });
+}
+
+// ---------------------------------------------------------------- Complejos (ficha)
+
+export async function renameTenantAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.rename", async () => {
+    const user = await requireSuperadmin();
+    const { renameTenant } = await import("@/modules/platform/tenants");
+    await renameTenant(user, tenantId, String(fd.get("name") ?? ""));
+    revalidatePath("/admin", "layout");
+    return "Nombre actualizado.";
+  });
+}
+
+export async function archiveTenantAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.archive", async () => {
+    const user = await requireSuperadmin();
+    const { archiveTenant } = await import("@/modules/platform/tenants");
+    const r = await archiveTenant(user, tenantId, String(fd.get("confirmSlug") ?? ""));
+    revalidatePath("/admin", "layout");
+    return r.futureBookings ? `Complejo archivado. Atención: tenía ${r.futureBookings} reserva(s) futura(s); avisá a esos jugadores.` : "Complejo archivado.";
+  });
+}
+
+export async function unarchiveTenantAction(tenantId: string, _p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.unarchive", async () => {
+    const user = await requireSuperadmin();
+    const { unarchiveTenant } = await import("@/modules/platform/tenants");
+    await unarchiveTenant(user, tenantId);
+    revalidatePath("/admin", "layout");
+    return "Complejo desarchivado (sigue suspendido hasta que lo reactives).";
+  });
+}
+
+export async function extendTrialAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.trial", async () => {
+    const user = await requireSuperadmin();
+    const { extendTrial } = await import("@/modules/platform/tenants");
+    const end = await extendTrial(user, tenantId, Number(fd.get("days") ?? 0));
+    revalidatePath("/admin", "layout");
+    return `Prueba extendida hasta el ${end.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}.`;
+  });
+}
+
+export async function changeOwnerAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.owner", async () => {
+    const user = await requireSuperadmin();
+    const { changeTenantOwner } = await import("@/modules/platform/tenants");
+    await changeTenantOwner(user, tenantId, String(fd.get("email") ?? ""));
+    revalidatePath("/admin", "layout");
+    return "Dueño actualizado. Los dueños anteriores quedaron como administradores.";
   });
 }

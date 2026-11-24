@@ -52,6 +52,8 @@ export default async function TransfersPage({ params, searchParams }: { params: 
         {hasPermission(role, "payments.configure") ? <Link className={`${ui.button} ${ui.buttonSecondary}`} href={`/panel/${slug}/cobros`}>Datos de cobro</Link> : null}
       </header>
 
+      {sp.verificada && /^[A-Z0-9]{6,12}$/.test(sp.verificada) ? <p role="status" className={`${ui.alert} ${ui.alertOk}`}>Pago verificado. La reserva {sp.verificada} quedó confirmada y avisamos al jugador.</p> : null}
+      {sp.rechazada && /^[A-Z0-9]{6,12}$/.test(sp.rechazada) ? <p role="status" className={`${ui.alert} ${ui.alertInfo}`}>Reserva {sp.rechazada} rechazada. El horario quedó libre.</p> : null}
       <nav className={styles.tabs} aria-label="Estado">
         {TABS.map((t) => {
           const count = t.key === "todas" ? null : data.counts[t.key];

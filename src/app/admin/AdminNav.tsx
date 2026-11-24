@@ -2,7 +2,9 @@ import Link from "next/link";
 import ui from "@/components/ui.module.css";
 
 const LINKS = [
-  { href: "/admin", label: "Complejos" },
+  { href: "/admin", label: "Resumen" },
+  { href: "/admin/complejos", label: "Complejos" },
+  { href: "/admin/usuarios", label: "Usuarios" },
   { href: "/admin/planes", label: "Planes" },
   { href: "/admin/moderacion", label: "Moderación" },
   { href: "/admin/auditoria", label: "Auditoría" },

@@ -122,7 +122,12 @@ export async function setTenantStatus(user: AuthUser, tenantId: string, status: 
   const actor = assertSuperadmin(user);
   parseOrThrow(z.uuid(), tenantId);
   return withPlatformAdmin(user.id, async (tx) => {
-    const res = await tx.tenant.updateMany({ where: { id: tenantId }, data: { status } });
+    // Suspender exige motivo (queda en el complejo y en la auditoría); reactivar lo limpia.
+    // Un complejo archivado no se reactiva por acá: primero se desarchiva.
+    const res = await tx.tenant.updateMany({
+      where: { id: tenantId, ...(status === "ACTIVE" ? { archivedAt: null } : {}) },
+      data: { status, suspendedReason: status === "SUSPENDED" ? reason.slice(0, 300) : null },
+    });
     if (res.count !== 1) throw new AppError("TENANT_NOT_FOUND");
     await audit(tx, {
       tenantId,
@@ -145,6 +150,7 @@ export async function listTenantsForPlatform(user: AuthUser) {
         slug: true,
         name: true,
         status: true,
+        archivedAt: true,
         createdAt: true,
         _count: { select: { courts: true, bookings: true, memberships: true } },
         subscriptions: {

@@ -137,7 +137,7 @@ async function main() {
       { name: "F7 — Cancha B", sport: "FOOTBALL_7", durations: [60, 90, 120], open: 14 * 60, close: 26 * 60, prices: { 60: [60_000_00, 80_000_00], 90: [85_000_00, 110_000_00], 120: [110_000_00, 140_000_00] } },
     ],
   });
-  await ensureTenant({
+  const sur = await ensureTenant({
     slug: "complejo-deportivo-sur",
     name: "Complejo Deportivo Sur",
     description: "Fútbol y pádel en un mismo lugar.",
@@ -165,6 +165,7 @@ async function main() {
     ["duenio@padel-centro.example.com", "Dueño Pádel Centro", padel.id, "OWNER"],
     ["duenio@futbol-norte.example.com", "Dueña Fútbol Norte", futbol.id, "OWNER"],
     ["staff@futbol-norte.example.com", "Encargado Fútbol Norte", futbol.id, "STAFF"],
+    ["duenio@deportivo-sur.example.com", "Dueño Deportivo Sur", sur.id, "OWNER"],
   ];
   for (const [email, name, tenantId, role] of memberships) {
     const { user } = await ensureUser(email, name, ownerPw);
