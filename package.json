@@ -21,7 +21,10 @@
     "postinstall": "prisma generate",
     "job:expire": "tsx scripts/expire-pending.ts",
     "images:migrate": "tsx scripts/migrate-images-to-object.ts",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "admin:superadmin": "tsx scripts/ops/create-superadmin.ts",
+    "db:migrate:prod": "bash scripts/ops/migrate-prod.sh",
+    "db:verify": "node scripts/ops/verify-db.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

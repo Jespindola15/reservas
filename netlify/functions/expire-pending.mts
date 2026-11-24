@@ -1,8 +1,14 @@
 /**
- * Función programada de Netlify: cada minuto llama al job de vencimiento de
- * solicitudes PENDING (POST /api/internal/jobs/tick con CRON_SECRET).
- * El job es idempotente y seguro ante ejecuciones simultáneas.
- * Requiere la variable CRON_SECRET (mín. 32 caracteres) en Netlify.
+ * Función programada de Netlify (ÚNICO scheduler de TURNUP en este hosting): llama a
+ * POST /api/internal/jobs/tick con CRON_SECRET. El tick es idempotente y seguro ante
+ * ejecuciones simultáneas o repetidas; si una ejecución falla, la siguiente retoma lo pendiente.
+ *
+ * Frecuencia: cada 30 minutos. Cada llamada "despierta" la base de Neon, que queda activa
+ * ~5 minutos; con un tick por minuto la base no se suspendería nunca y el plan Free
+ * (100 CU-horas/mes) se agotaría a mitad de mes (≈182 CU-h a 0,25 CU). Cada 30 min ≈ 30 CU-h.
+ * No afecta la disponibilidad: las solicitudes vencidas dejan de ocupar el turno en el
+ * momento (lo resuelven la consulta de disponibilidad y la creación de reservas).
+ * Con un plan pago de Neon se puede bajar a "* * * * *" (o cada 5 minutos).
  */
 import type { Config } from "@netlify/functions";
 
@@ -18,9 +24,11 @@ const handler = async () => {
     headers: { authorization: `Bearer ${secret}` },
   });
   const body = await res.text();
-  console.log(`tick: ${res.status} ${body}`);
+  // Solo contadores (sin datos personales). Un status ≠ 200 queda visible en los logs de Netlify.
+  if (res.ok) console.log(`tick: ${res.status} ${body.slice(0, 500)}`);
+  else console.error(`tick: FALLÓ ${res.status} ${body.slice(0, 500)}`);
   return new Response(body, { status: res.status });
 };
 
 export default handler;
-export const config: Config = { schedule: "* * * * *" };
+export const config: Config = { schedule: "*/30 * * * *" };

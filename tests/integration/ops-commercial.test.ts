@@ -195,6 +195,31 @@ describe("calendario y cambios de horario", () => {
   });
 });
 
+describe("seguridad de la conexión de runtime", () => {
+  it("la app se conecta con un rol sin BYPASSRLS y en UTC", async () => {
+    const { inspectDbSafety } = await import("@/lib/db/safety");
+    const s = await inspectDbSafety();
+    expect(s).toMatchObject({ ok: true, role: "reservas_app" });
+    expect(s.timezone.toUpperCase()).toMatch(/UTC/);
+  });
+
+  it("db/verify.sql pasa completo sobre la base de pruebas", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const rows = await owner.$queryRawUnsafe<{ check_name: string; ok: boolean }[]>(await readFile("db/verify.sql", "utf8"));
+    expect(rows.filter((r) => !r.ok).map((r) => r.check_name)).toEqual([]);
+  });
+
+  it("el seed de demostración se niega a correr contra una base remota", () => {
+    let out = "";
+    try {
+      execSync("npx tsx prisma/seed.ts", { env: { ...process.env, NODE_ENV: "development", MIGRATION_DATABASE_URL: "postgresql://reservas_owner:x@ep-ejemplo.us-east-2.aws.neon.tech/turnup?sslmode=require" }, encoding: "utf8", stdio: "pipe" });
+    } catch (e) {
+      out = String((e as { stderr?: string }).stderr ?? "");
+    }
+    expect(out).toContain("solo corre contra una base local");
+  });
+});
+
 describe("integridad de migraciones", () => {
   it("la base migrada coincide exactamente con el esquema de Prisma (sin deriva)", () => {
     const out = execSync("npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code", {

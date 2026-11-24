@@ -24,3 +24,7 @@ SELECT 'CREATE ROLE reservas_app LOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREA
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reservas_app') \gexec
 
 GRANT app_runtime TO reservas_app;
+
+-- Zona horaria de sesión UTC para los roles de TURNUP (ver src/lib/db/safety.ts).
+ALTER ROLE reservas_app SET timezone TO 'UTC';
+ALTER ROLE reservas_owner SET timezone TO 'UTC';

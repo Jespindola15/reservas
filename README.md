@@ -18,6 +18,7 @@ Zod 4 · Luxon · CSS Modules · Vitest · Playwright.
 
 Documentación: [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) · [`docs/FASE2.md`](docs/FASE2.md) ·
 [`docs/FASE3.md`](docs/FASE3.md) · [`docs/INFRAESTRUCTURA.md`](docs/INFRAESTRUCTURA.md) ·
+[`docs/NEON_NETLIFY.md`](docs/NEON_NETLIFY.md) (**puesta en marcha en producción**) ·
 [`docs/PENDIENTES_Y_RIESGOS.md`](docs/PENDIENTES_Y_RIESGOS.md).
 
 > **No está listo para producción** sin una revisión de seguridad externa y los pendientes de
@@ -66,7 +67,7 @@ idempotente y seguro ante ejecuciones simultáneas (`FOR UPDATE SKIP LOCKED`, lo
 
 **Un solo scheduler** según el hosting:
 
-- **Netlify (actual)**: la función programada `netlify/functions/expire-pending.mts` llama al tick cada minuto.
+- **Netlify (actual)**: la función programada `netlify/functions/expire-pending.mts` llama al tick cada 30 minutos (cuida las CU-horas del plan Free de Neon; ver docs/NEON_NETLIFY.md).
   El temporizador interno se apaga solo en serverless.
 - **Servidor persistente** (`next start` en un VPS): `EXPIRATION_SCHEDULER=internal` (por defecto), o un cron
   del sistema con `npm run job:expire`.
@@ -97,6 +98,8 @@ npm run check              # todo lo anterior
 
 ## Deploy en Netlify
 
+> Guía paso a paso con Neon (roles, migraciones, superadmin, variables): **docs/NEON_NETLIFY.md**.
+
 La instalación y el build funcionan sin secretos (`prisma generate` no necesita la base; el build usa
 marcadores). Pero **la app no funciona en runtime sin una base PostgreSQL accesible desde internet** (Neon,
 Supabase, Railway, etc.) y estas variables en *Site configuration → Environment variables*:
@@ -123,7 +126,7 @@ MIGRATION_DATABASE_URL="postgresql://reservas_owner:...@HOST/DB?sslmode=require"
 ```
 
 - `netlify.toml` fija Node 22 y `npm run build`.
-- `netlify/functions/expire-pending.mts` es una función programada que cada minuto dispara el tick.
+- `netlify/functions/expire-pending.mts` es una función programada que cada 30 minutos dispara el tick.
 - **Las migraciones NO corren en el build.** Después de cada deploy que agregue migraciones hay que ejecutar
   `prisma migrate deploy` contra la base de producción (son aditivas; ver docs/INFRAESTRUCTURA.md).
 - Si el proveedor no permite crear roles (`CREATE ROLE`) o la extensión `btree_gist`, no sirve: la app depende de

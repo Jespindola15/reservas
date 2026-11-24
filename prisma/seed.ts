@@ -16,6 +16,21 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 
+// Barrera extra: el seed crea complejos y usuarios de DEMOSTRACIÓN. Nunca contra una base remota
+// (Neon, etc.), aunque NODE_ENV no diga "production". Solo localhost / 127.0.0.1.
+{
+  let host = "";
+  try {
+    host = new URL(process.env.MIGRATION_DATABASE_URL ?? "").hostname;
+  } catch {
+    host = "";
+  }
+  if (!["localhost", "127.0.0.1", "::1"].includes(host)) {
+    console.error(`El seed de demostración solo corre contra una base local (host actual: ${host || "desconocido"}).`);
+    process.exit(1);
+  }
+}
+
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.MIGRATION_DATABASE_URL! }) });
 
 const generated: string[] = [];

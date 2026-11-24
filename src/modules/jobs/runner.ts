@@ -121,5 +121,7 @@ export async function healthSnapshot() {
     backlog: await tx.notification.count({ where: { status: { in: ["PENDING", "SENDING"] }, createdAt: { lt: new Date(Date.now() - 15 * 60_000) } } }),
     failed24h: await tx.notification.count({ where: { status: "FAILED", updatedAt: { gt: new Date(Date.now() - 86_400_000) } } }),
   }));
-  return { dbMs, jobs, backlog, failed24h };
+  const { inspectDbSafety } = await import("@/lib/db/safety");
+  const safety = await inspectDbSafety();
+  return { dbMs, jobs, backlog, failed24h, safety };
 }

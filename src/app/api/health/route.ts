@@ -10,6 +10,9 @@ import { healthSnapshot } from "@/modules/jobs/runner";
  *  - Con Bearer CRON_SECRET: detalle (latencia de BD, jobs, cola de emails, avisos de configuración).
  * 200 = ok/degraded, 503 = down.
  */
+/** La función programada corre cada 30 min (ver netlify/functions/expire-pending.mts). */
+const TICK_STALE_MS = 75 * 60_000;
+
 export async function GET(req: Request) {
   const headers = { "Cache-Control": "no-store" };
   let snap: Awaited<ReturnType<typeof healthSnapshot>>;
@@ -27,20 +30,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ status: "down" }, { status: 503, headers });
   }
   const tickRun = snap.jobs.find((j) => j.name === "tick");
-  const jobsStale = !tickRun?.lastSuccessAt || Date.now() - tickRun.lastSuccessAt.getTime() > 5 * 60_000;
+  const jobsStale = !tickRun?.lastSuccessAt || Date.now() - tickRun.lastSuccessAt.getTime() > TICK_STALE_MS;
   const failingJobs = snap.jobs.filter((j) => j.consecutiveFailures > 0).map((j) => j.name);
   const warnings: string[] = [];
   const env = getEnv();
   if (!env.AUTH_CLIENT_IP_HEADER) warnings.push("AUTH_CLIENT_IP_HEADER sin configurar (rate limiting por IP inactivo)");
   if (emailProviderName() === "disabled") warnings.push("Emails desactivados (EMAIL_PROVIDER)");
   if (!env.CRON_SECRET) warnings.push("CRON_SECRET vacío: la tarea programada no puede ejecutarse");
-  if (jobsStale) warnings.push("La tarea programada no corrió en los últimos 5 minutos");
+  if (jobsStale) warnings.push("La tarea programada no corrió en los últimos 75 minutos (corre cada 30)");
+  if (!snap.safety.ok) {
+    logger.error("health.unsafe_db", new Error(snap.safety.problems.join("; ")));
+    if (!hasCronSecret(req)) return NextResponse.json({ status: "down" }, { status: 503, headers });
+    return NextResponse.json({ status: "down", db: { safety: snap.safety.problems } }, { status: 503, headers });
+  }
   const status = jobsStale || failingJobs.length || snap.backlog > 0 || snap.dbMs > 2000 ? "degraded" : "ok";
   if (!hasCronSecret(req)) return NextResponse.json({ status }, { headers });
   return NextResponse.json(
     {
       status,
-      db: { latencyMs: snap.dbMs },
+      db: { latencyMs: snap.dbMs, role: snap.safety.role, timezone: snap.safety.timezone },
       jobs: snap.jobs.map((j) => ({ name: j.name, lastSuccessAt: j.lastSuccessAt, lastStatus: j.lastStatus, consecutiveFailures: j.consecutiveFailures })),
       notifications: { backlogOlderThan15m: snap.backlog, failedLast24h: snap.failed24h, provider: emailProviderName() },
       warnings,

@@ -48,3 +48,6 @@ next-env.d.ts
 /test-results
 /playwright-report
 !.env.test.example
+
+# Claves temporales para la puesta en marcha (NUNCA subir)
+.turnup-secrets/

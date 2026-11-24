@@ -1,4 +1,5 @@
 import "server-only";
+import { assertDbSafety } from "@/lib/db/safety";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,6 +20,7 @@ import {
  * datos cacheados en la cookie).
  */
 export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
+  await assertDbSafety(); // falla cerrado si la conexión a la base no es segura (rol o zona horaria)
   const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) return null;
   const user = await prisma.user.findUnique({

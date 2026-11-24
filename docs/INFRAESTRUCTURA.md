@@ -28,7 +28,7 @@ el estado de producción es desconocido.
 2. En la base: `SELECT migration_name FROM _prisma_migrations ORDER BY 1;` debe listar las 7 migraciones.
 3. `curl https://TU-SITIO/api/health` → `{"status":"ok"}` (o `degraded` con motivo si se consulta con el secreto:
    `curl -H "Authorization: Bearer $CRON_SECRET" https://TU-SITIO/api/health`).
-4. Netlify → *Logs → Functions → expire-pending*: una ejecución por minuto con `tick: 200`.
+4. Netlify → *Logs → Functions → expire-pending*: una ejecución cada 30 min con `tick: 200`.
 
 ## 2. Orden seguro de despliegue de esta fase
 
@@ -43,7 +43,8 @@ Si se hace al revés (push primero), las páginas que usan columnas nuevas falla
 
 ## 3. Tareas programadas
 
-- **Una sola**: `netlify/functions/expire-pending.mts` (cron `* * * * *`) → `POST /api/internal/jobs/tick`.
+- **Una sola**: `netlify/functions/expire-pending.mts` (cron `*/30 * * * *`) → `POST /api/internal/jobs/tick`.
+  Cada 30 min para no mantener despierta la base de Neon (plan Free: 100 CU-h/mes).
 - El tick: vencimientos → recordatorios/resúmenes → envío de emails (lotes de 50) → limpieza (1 vez por hora).
 - Cada paso registra su resultado en `job_runs` (última ejecución, último éxito, error saneado, fallas seguidas).
 - Concurrencia: dos ticks simultáneos no duplican vencimientos ni emails (probado: 3 ticks en paralelo).
@@ -54,7 +55,8 @@ Si se hace al revés (push primero), las páginas que usan columnas nuevas falla
 - `GET /api/health` → `200 {"status":"ok"|"degraded"}` o `503 {"status":"down"}`. Sin datos internos.
   Con `Authorization: Bearer $CRON_SECRET`: latencia de la base, estado de cada job, emails atrasados (> 15 min),
   emails fallidos en 24 h y avisos de configuración.
-- Recomendado (gratis): **UptimeRobot** o **Better Stack** contra `/api/health` cada 5 min (alerta por 503 o por
+- Recomendado (gratis): **UptimeRobot** o **Better Stack** contra `/api/health/live` cada 5 min (no toca la base;
+  `/api/health` sí la despierta: consultarlo como mucho cada 30–60 min) (alerta por 503 o por
   la palabra `degraded`). No se configuró: requiere crear una cuenta (autorización del dueño).
 - `ALERT_WEBHOOK_URL`: si un job falla 3 veces seguidas se envía un aviso (máx. 1 cada 30 min por job).
 - Logs: JSON por línea (`level`, `msg`, `time`, contexto). Un filtro central **redacta** credenciales en URLs,

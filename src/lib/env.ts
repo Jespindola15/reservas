@@ -72,7 +72,14 @@ const schema = z
     if (/test-secret|change-me|changeme/i.test(env.BETTER_AUTH_SECRET)) {
       ctx.addIssue({ code: "custom", path: ["BETTER_AUTH_SECRET"], message: "Secreto de ejemplo en producción" });
     }
-    if (/reservas_owner|postgres:/i.test(env.DATABASE_URL)) {
+    let dbUser = "";
+    try {
+      dbUser = decodeURIComponent(new URL(env.DATABASE_URL).username).toLowerCase();
+    } catch {
+      dbUser = "";
+    }
+    // Rol dueño/administrador: local (reservas_owner, postgres) o el que crea Neon (<base>_owner, neon_superuser).
+    if (!dbUser || dbUser === "postgres" || dbUser === "reservas_owner" || dbUser.endsWith("_owner") || dbUser.startsWith("neon")) {
       ctx.addIssue({
         code: "custom",
         path: ["DATABASE_URL"],

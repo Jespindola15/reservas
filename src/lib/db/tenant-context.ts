@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { assertDbSafety } from "@/lib/db/safety";
 import { prisma } from "@/lib/db/prisma";
 
 export type Tx = Prisma.TransactionClient;
@@ -34,8 +35,10 @@ function assertUuid(value: string, label: string) {
 export async function withTenant<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
   assertUuid(ctx.tenantId, "tenantId");
   if (ctx.userId) assertUuid(ctx.userId, "userId");
+  await assertDbSafety();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.tenant_id', ${ctx.tenantId}, true),
+    await tx.$queryRaw`SELECT set_config('TimeZone', 'UTC', true),
+                              set_config('app.tenant_id', ${ctx.tenantId}, true),
                               set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
     return fn(tx);
   }, TX_OPTIONS);
@@ -44,8 +47,9 @@ export async function withTenant<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<
 /** Contexto de usuario sin tenant (p. ej. listar mis membresías). */
 export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
   assertUuid(userId, "userId");
+  await assertDbSafety();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.user_id', ${userId}, true)`;
+    await tx.$queryRaw`SELECT set_config('TimeZone', 'UTC', true), set_config('app.user_id', ${userId}, true)`;
     return fn(tx);
   }, TX_OPTIONS);
 }
@@ -57,8 +61,10 @@ export async function withUser<T>(userId: string, fn: (tx: Tx) => Promise<T>): P
  */
 export async function withPlatformAdmin<T>(userId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
   assertUuid(userId, "userId");
+  await assertDbSafety();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.platform_admin', 'on', true),
+    await tx.$queryRaw`SELECT set_config('TimeZone', 'UTC', true),
+                              set_config('app.platform_admin', 'on', true),
                               set_config('app.user_id', ${userId}, true)`;
     return fn(tx);
   }, TX_OPTIONS);
@@ -70,8 +76,9 @@ export async function withPlatformAdmin<T>(userId: string, fn: (tx: Tx) => Promi
  * del servidor y flujos ya validados con un token de un solo uso.
  */
 export async function withSystem<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  await assertDbSafety();
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT set_config('app.platform_admin', 'on', true), set_config('app.user_id', '', true)`;
+    await tx.$queryRaw`SELECT set_config('TimeZone', 'UTC', true), set_config('app.platform_admin', 'on', true), set_config('app.user_id', '', true)`;
     return fn(tx);
   }, TX_OPTIONS);
 }
