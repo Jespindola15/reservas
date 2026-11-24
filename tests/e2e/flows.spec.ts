@@ -481,3 +481,48 @@ test("dueño: estadísticas por período y clientes con filtros; personal no ve 
   await page.waitForURL("**/panel/futbol-norte");
   expect((await page.goto("/panel/futbol-norte/estadisticas"))?.status()).toBe(404);
 });
+
+test("portada lista los complejos y el dueño personaliza su página pública (logo, servicios, QR)", async ({ page }) => {
+  await page.goto("/");
+  const dir = page.getByRole("region", { name: "Complejos para reservar" });
+  await expect(dir.getByRole("link", { name: /Fútbol Norte/ })).toBeVisible();
+  await expect(dir.getByRole("link", { name: /Pádel Centro/ })).toBeVisible();
+
+  await login(page, "duenio@futbol-norte.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/futbol-norte");
+  await page.goto("/panel/futbol-norte/pagina");
+  await expect(page.getByRole("heading", { name: "Página pública" })).toBeVisible();
+  // PNG 1×1 válido; se recorta a 512×512 WebP en el servidor.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await page.getByLabel(/Archivo de imagen \(subir logo\)/).setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: png });
+  await page.getByRole("button", { name: "Subir logo", exact: true }).click();
+  await expect(page.getByAltText("Logo actual")).toBeVisible();
+  await page.getByLabel("Duchas").check();
+  await page.getByLabel("Instagram").fill("@futbolnorte");
+  await page.getByRole("button", { name: "Guardar página pública" }).click();
+  await expect(page.getByText("Página pública actualizada.")).toBeVisible();
+  const qr = await page.request.get("/panel/futbol-norte/qr?formato=png");
+  expect(qr.status()).toBe(200);
+  expect(qr.headers()["content-type"]).toBe("image/png");
+
+  await page.goto("/futbol-norte");
+  await expect(page.getByAltText("Logo de Fútbol Norte")).toBeVisible();
+  await expect(page.getByText("Duchas")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Instagram" })).toHaveAttribute("href", "https://instagram.com/futbolnorte");
+});
+
+test("puesta en marcha: aviso en el inicio, pasos con avance y enlace + QR al final @mobile", async ({ page }) => {
+  await login(page, "duenio@padel-centro.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/padel-centro");
+  await page.getByRole("region", { name: "Puesta en marcha" }).getByRole("link", { name: "Continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Puesta en marcha" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Avance de la puesta en marcha" })).toBeVisible();
+  const rules = page.getByRole("listitem").filter({ hasText: "Reglas de reserva" });
+  // El proyecto móvil corre después sobre la misma base: el paso puede venir ya hecho.
+  if (await rules.getByRole("button", { name: "Ya revisé las reglas" }).isVisible()) {
+    await rules.getByRole("button", { name: "Ya revisé las reglas" }).click();
+  }
+  await expect(rules).toContainText("(completo)");
+  await expect(page.getByAltText(/Código QR de/)).toBeVisible();
+  await expect(page.getByText(/\/padel-centro$/).first()).toBeVisible();
+});

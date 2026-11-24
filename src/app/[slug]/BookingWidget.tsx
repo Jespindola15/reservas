@@ -27,6 +27,9 @@ export function BookingWidget(props: {
   maxAdvanceDays: number;
   requiresApproval: boolean;
   courts: CourtInfo[];
+  cancellationPolicy?: string | null;
+  cancellationMinutes?: number;
+  tenantName?: string;
 }) {
   const sports = useMemo(() => [...new Set(props.courts.map((c) => c.sport))], [props.courts]);
   const [sport, setSport] = useState<Sport | "ALL">(sports.length === 1 ? sports[0]! : "ALL");
@@ -161,6 +164,10 @@ export function BookingWidget(props: {
           </div>
           <span className={ui.faint}>Guardalo: por seguridad, no se puede recuperar con el código solo.</span>
         </div>
+        <ShareMatch
+          text={`Reservé ${props.tenantName ? `en ${props.tenantName} ` : ""}para el ${dateFmt.format(new Date(result.startsAt))} a las ${timeFmt.format(new Date(result.startsAt))} hs. ¿Te sumás?`}
+          url={`${window.location.origin}/${props.slug}`}
+        />
         <button className={`${ui.button} ${ui.buttonGhost}`} onClick={() => { setResult(null); setCopied(false); }}>Hacer otra reserva</button>
       </section>
     );
@@ -301,6 +308,17 @@ export function BookingWidget(props: {
               <span className={ui.label}>Comentarios (opcional)</span>
               <textarea className={ui.textarea} id="notes" name="notes" maxLength={500} />
             </label>
+            {props.cancellationPolicy || props.cancellationMinutes !== undefined ? (
+              <div className={ui.faint} aria-label="Política de cancelación">
+                <strong>Cancelación:</strong>{" "}
+                {props.cancellationMinutes !== undefined
+                  ? props.cancellationMinutes > 0
+                    ? `podés cancelar online hasta ${props.cancellationMinutes >= 120 && props.cancellationMinutes % 60 === 0 ? `${props.cancellationMinutes / 60} horas` : `${props.cancellationMinutes} minutos`} antes del turno. `
+                    : "podés cancelar online hasta el inicio del turno. "
+                  : ""}
+                {props.cancellationPolicy ?? ""}
+              </div>
+            ) : null}
             {submitError ? <p role="alert" className={`${ui.alert} ${ui.alertError}`}>{submitError}</p> : null}
             <div className={ui.row}>
               <button className={ui.button} type="submit" disabled={submitting}>
@@ -313,6 +331,40 @@ export function BookingWidget(props: {
           </form>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Compartir el partido con amigos: comparte la FECHA y la página pública del
+ * complejo, nunca el enlace privado de la reserva (que permite cancelarla).
+ */
+function ShareMatch({ text, url }: { text: string; url: string }) {
+  const [msg, setMsg] = useState("");
+  return (
+    <div className={ui.row}>
+      <button
+        type="button"
+        className={`${ui.button} ${ui.buttonSecondary}`}
+        onClick={async () => {
+          try {
+            if (navigator.share) {
+              await navigator.share({ text, url });
+              return;
+            }
+            await navigator.clipboard.writeText(`${text} ${url}`);
+            setMsg("Mensaje copiado para compartir.");
+          } catch {
+            setMsg("");
+          }
+        }}
+      >
+        Compartir con amigos
+      </button>
+      <a className={`${ui.button} ${ui.buttonGhost}`} href={`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`} target="_blank" rel="noopener noreferrer">
+        Enviar por WhatsApp
+      </a>
+      <span role="status" className={ui.faint}>{msg}</span>
     </div>
   );
 }

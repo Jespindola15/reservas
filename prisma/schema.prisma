@@ -262,6 +262,8 @@ model Tenant {
   website                   String?
   services                  String[]     @default([])
   cancellationPolicy        String?      @map("cancellation_policy")
+  /// Aparece en el listado público de complejos de la portada (opt-out).
+  publicListed              Boolean      @default(true) @map("public_listed")
   /// Asistente de configuración: último paso completado (0-7) y fin.
   onboardingStep            Int          @default(0) @map("onboarding_step")
   onboardingCompletedAt     DateTime?    @map("onboarding_completed_at") @db.Timestamptz(3)

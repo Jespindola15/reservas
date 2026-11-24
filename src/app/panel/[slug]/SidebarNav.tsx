@@ -39,6 +39,7 @@ export function SidebarNav({ slug, canManage }: { slug: string; canManage: boole
           { href: `${base}/canchas`, label: "Canchas y precios", icon: "canchas" },
           { href: `${base}/horarios`, label: "Feriados y bloqueos", icon: "horarios" },
           { href: `${base}/equipo`, label: "Equipo", icon: "equipo" },
+          { href: `${base}/pagina`, label: "Página pública", icon: "publica" },
           { href: `${base}/ajustes`, label: "Ajustes", icon: "ajustes" },
         ]
       : []),
@@ -56,7 +57,7 @@ export function SidebarNav({ slug, canManage }: { slug: string; canManage: boole
       })}
       <Link href={`/${slug}`} className={styles.navItem} target="_blank" rel="noopener">
         <Icon name="publica" />
-        Página pública
+        Ver mi página
       </Link>
     </nav>
   );

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/lib/actions";
@@ -21,6 +21,8 @@ import {
   updateCourt,
 } from "@/modules/courts/service";
 import { updateTenantSettings } from "@/modules/tenant/settings";
+import { markOnboardingStep } from "@/modules/tenant/onboarding";
+import { ASSET_KINDS, addTenantAsset, deleteTenantAsset, updateBranding, type AssetKind, type BrandingInput } from "@/modules/tenant/branding";
 
 /**
  * Configuración del complejo (canchas, horarios, tarifas, feriados, ajustes).
@@ -325,4 +327,64 @@ function conflictNote(c: { count: number; sample: { code: string }[] }): string 
   if (c.count === 0) return "";
   const codes = c.sample.map((x) => x.code).join(", ");
   return ` Atención: ${c.count} ${c.count === 1 ? "reserva activa quedó" : "reservas activas quedaron"} fuera del nuevo horario (${codes}${c.count > c.sample.length ? "…" : ""}). No se modificaron: revisalas en Reservas para mantenerlas, reprogramarlas o cancelarlas.`;
+}
+
+// ---------------------------------------------------------------------- Página pública (marca)
+
+export async function updateBrandingAction(slug: string, _p: ActionResult, fd: FormData) {
+  return runAction("tenant.branding", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    await updateBranding(
+      ctx,
+      {
+        brandColor: String(fd.get("brandColor") ?? ""),
+        whatsapp: String(fd.get("whatsapp") ?? ""),
+        instagram: String(fd.get("instagram") ?? ""),
+        facebook: String(fd.get("facebook") ?? ""),
+        website: String(fd.get("website") ?? ""),
+        services: fd.getAll("services").map(String) as BrandingInput["services"],
+        cancellationPolicy: String(fd.get("cancellationPolicy") ?? ""),
+        publicListed: fd.get("publicListed") === "on",
+      },
+      actorOf(user.id),
+    );
+    revalidatePath(`/panel/${slug}`, "layout");
+    revalidatePath(`/${slug}`);
+    revalidateTag("public-directory", "max");
+    revalidatePath("/");
+    return "Página pública actualizada.";
+  });
+}
+
+export async function uploadTenantAssetAction(slug: string, kind: AssetKind, _p: ActionResult, fd: FormData) {
+  return runAction("tenant.asset.add", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    const file = fd.get("image");
+    if (!(file instanceof File) || file.size === 0 || file.size > 1_572_864) throw new AppError("IMAGE_INVALID");
+    await addTenantAsset(ctx, parseOrThrow(z.enum(ASSET_KINDS), kind), new Uint8Array(await file.arrayBuffer()), actorOf(user.id));
+    revalidatePath(`/panel/${slug}`, "layout");
+    revalidatePath(`/${slug}`);
+    return kind === "LOGO" ? "Logo actualizado." : kind === "COVER" ? "Portada actualizada." : "Foto agregada a la galería.";
+  });
+}
+
+export async function deleteTenantAssetAction(slug: string, _p: ActionResult, fd: FormData) {
+  return runAction("tenant.asset.delete", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    await deleteTenantAsset(ctx, parseOrThrow(z.uuid(), fd.get("assetId")), actorOf(user.id));
+    revalidatePath(`/panel/${slug}`, "layout");
+    revalidatePath(`/${slug}`);
+    return "Imagen eliminada.";
+  });
+}
+
+// ---------------------------------------------------------------------- Puesta en marcha
+
+export async function markOnboardingStepAction(slug: string, step: number, _p: ActionResult, _fd: FormData) {
+  return runAction("tenant.onboarding", async () => {
+    const { ctx, user } = await requireTenant(slug, "tenant.settings");
+    await markOnboardingStep(ctx, step, actorOf(user.id));
+    revalidatePath(`/panel/${slug}`, "layout");
+    return step === 7 ? "¡Listo! Tu complejo ya está en marcha." : "Paso marcado como hecho.";
+  });
 }

@@ -30,7 +30,26 @@ export async function getPublicTenantProfile(slug: string) {
         currency: true,
         bookingRequiresApproval: true,
         maxAdvanceDays: true,
+        brandColor: true,
+        whatsapp: true,
+        instagram: true,
+        facebook: true,
+        website: true,
+        services: true,
+        cancellationPolicy: true,
+        publicCancellationMinutes: true,
       },
+    });
+    const assets = await tx.tenantAsset.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, kind: true },
+    });
+    // "Desde $X" por cancha: la tarifa más baja vigente (sin fechas especiales pasadas).
+    const prices = await tx.courtPriceRule.groupBy({
+      by: ["courtId"],
+      where: { tenantId: ctx.tenantId, specialDate: null },
+      _min: { amount: true },
     });
     const courts = await tx.court.findMany({
       where: { tenantId: ctx.tenantId, isActive: true },
@@ -45,6 +64,13 @@ export async function getPublicTenantProfile(slug: string) {
         images: { select: { id: true }, orderBy: { sortOrder: "asc" }, take: 1 },
       },
     });
-    return { tenant, courts };
+    const minPrice = new Map(prices.map((p) => [p.courtId, p._min.amount]));
+    return {
+      tenant,
+      courts: courts.map((c) => ({ ...c, fromPrice: minPrice.get(c.id) ?? null })),
+      logoId: assets.find((a) => a.kind === "LOGO")?.id ?? null,
+      coverId: assets.find((a) => a.kind === "COVER")?.id ?? null,
+      galleryIds: assets.filter((a) => a.kind === "GALLERY").map((a) => a.id),
+    };
   });
 }

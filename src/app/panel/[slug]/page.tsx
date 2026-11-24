@@ -5,6 +5,8 @@ import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { formatLocalDateTime, formatLocalTime, localMidnight } from "@/modules/booking/time";
 import { getDashboard } from "@/modules/dashboard/queries";
+import { hasPermission } from "@/modules/access/authorize";
+import { getOnboarding } from "@/modules/tenant/onboarding";
 import { STATUS_LABEL, actionLabel } from "./labels";
 import styles from "./dashboard.module.css";
 
@@ -18,6 +20,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   const d = await getDashboard(access.ctx, tenant.timezone);
   const label = localMidnight(d.today, tenant.timezone)!.setLocale("es-AR").toFormat("cccc d 'de' LLLL");
   const base = `/panel/${slug}`;
+  const onboarding = hasPermission(access.role, "tenant.settings") ? await getOnboarding(access.ctx) : null;
 
   const stats = [
     { label: "Turnos hoy", value: d.totals.today, hint: "Pendientes y confirmados", href: `${base}/calendario` },
@@ -38,6 +41,14 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
           <Link href={`${base}/calendario`} className={`${ui.button} ${ui.buttonSecondary}`}>Ver calendario</Link>
         </div>
       </header>
+
+      {onboarding && !onboarding.finished ? (
+        <section className={`${ui.alert} ${ui.alertInfo}`} style={{ marginBottom: "1rem" }} aria-label="Puesta en marcha">
+          <strong>Puesta en marcha: {onboarding.completed} de 7 pasos.</strong>{" "}
+          Siguiente: {onboarding.steps.find((s) => s.n === onboarding.current)?.title}.{" "}
+          <Link href={`${base}/bienvenida`}>Continuar</Link>
+        </section>
+      ) : null}
 
       <section className={styles.stats} aria-label="Indicadores">
         {stats.map((s) => (
