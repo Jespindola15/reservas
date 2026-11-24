@@ -256,3 +256,30 @@ export async function cancelSeriesAction(slug: string, seriesId: string, _p: Act
     return r.cancelled ? `Se cancelaron ${r.cancelled} reserva(s) del turno fijo.` : "No había reservas futuras para cancelar.";
   });
 }
+
+// -------------------------------------------------- Reprogramar arrastrando (calendario)
+
+const moveSchema = z.object({
+  bookingId: uuidSchema,
+  version: z.coerce.number().int().min(1),
+  courtId: uuidSchema,
+  date: z.iso.date(),
+  minute: z.coerce.number().int().min(0).max(2879),
+  durationMinutes: z.coerce.number().int().min(15).max(720),
+});
+
+/** Igual que reprogramar desde el detalle: el servidor valida horario, superposición (PostgreSQL) y versión. */
+export async function moveBookingAction(slug: string, raw: z.input<typeof moveSchema>): Promise<ActionResult> {
+  return runAction("booking.move", async () => {
+    const { ctx, user, tenant } = await requireTenant(slug, "booking.manage");
+    const input = parseOrThrow(moveSchema, raw);
+    const hh = String(Math.floor(input.minute / 60) % 24).padStart(2, "0");
+    const mm = String(input.minute % 60).padStart(2, "0");
+    const date = input.minute >= 1440 ? new Date(new Date(`${input.date}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10) : input.date;
+    const startsAt = localDateTimeToInstant(date, `${hh}:${mm}`, tenant.timezone);
+    if (!startsAt) throw new AppError("INVALID_SLOT");
+    await rescheduleBooking(ctx, { bookingId: input.bookingId, startsAt, durationMinutes: input.durationMinutes, courtId: input.courtId, expectedVersion: input.version }, { type: "USER", userId: user.id });
+    revalidatePath(`/panel/${slug}`, "layout");
+    return `Reserva movida a las ${hh}:${mm}.`;
+  });
+}

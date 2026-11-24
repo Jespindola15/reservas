@@ -422,3 +422,38 @@ test("dueño: turno fijo semanal con revisión de fechas y pago registrado a man
   await page.reload();
   await expect(page.getByText("Seña · Efectivo")).toBeVisible();
 });
+
+test("calendario: filtros, hora actual y reprogramar arrastrando un turno", async ({ page }) => {
+  await login(page, "duenio@padel-centro.example.com", OWNER_PW);
+  await page.waitForURL("**/panel/padel-centro");
+  const day = tomorrow();
+  await page.goto(`/panel/padel-centro/calendario?date=${day}`);
+  await page.getByRole("link", { name: "Reservar Cancha 1 a las 15:00" }).click();
+  await page.getByLabel("Nombre del cliente").fill("Arrastre Prueba");
+  await page.getByLabel("Teléfono").fill("11 2222-3333");
+  await page.getByRole("button", { name: "Registrar reserva" }).click();
+  await expect(page.getByText(/Reserva registrada/)).toBeVisible();
+  await page.goto(`/panel/padel-centro/calendario?date=${day}`);
+
+  const event = page.locator("[data-booking-id]", { hasText: "Arrastre Prueba" });
+  const target = page.locator('[data-court-name="Cancha 2"]');
+  await event.scrollIntoViewIfNeeded();
+  const from = (await event.boundingBox())!;
+  const col = (await target.boundingBox())!;
+  await page.mouse.move(from.x + 20, from.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 60, from.y + 20, { steps: 4 });
+  await page.mouse.move(col.x + 30, from.y + 10, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole("dialog", { name: "Confirmar cambio de horario" })).toContainText("Cancha 2");
+  await page.getByRole("button", { name: "Mover", exact: true }).click();
+  await expect(page.getByText("Reserva movida a las 15:00.")).toBeVisible();
+  await expect(page.locator('[data-court-name="Cancha 2"]').getByText("Arrastre Prueba")).toBeVisible();
+
+  // Filtro por estado y línea de hora actual (en el día de hoy)
+  await page.goto(`/panel/padel-centro/calendario?date=${day}&status=PENDING`);
+  await expect(page.getByText("Arrastre Prueba")).toHaveCount(0);
+  await page.goto("/panel/padel-centro/calendario");
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+  if (hour >= 8) await expect(page.locator('[class*="nowLine"]').first()).toBeAttached();
+});

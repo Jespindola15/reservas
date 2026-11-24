@@ -8,7 +8,9 @@ import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { getCalendar, getMonthSummary } from "@/modules/booking/admin-queries";
 import { formatLocalTime, localMidnight, minutesToHHMM, todayIn } from "@/modules/booking/time";
-import { createManualBookingAction } from "../actions";
+import { hasPermission } from "@/modules/access/authorize";
+import { createManualBookingAction, moveBookingAction } from "../actions";
+import { DragLayer } from "./DragLayer";
 import { STATUS_LABEL } from "../labels";
 import styles from "./calendar.module.css";
 
@@ -17,14 +19,16 @@ export const metadata: Metadata = { title: "Calendario" };
 const ROW_MIN = 30; // minutos por fila
 const ROW_PX = 40;
 
-type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string };
+type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string; sport?: string; status?: string };
+const SPORT_LABEL: Record<string, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otro" };
 
 export default async function CalendarPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<SP> }) {
   const { slug } = await params;
   const sp = await searchParams;
   const access = await requireTenantPage(slug, "booking.read");
   if (!access) notFound();
-  const { ctx, tenant } = access;
+  const { ctx, tenant, role } = access;
+  const canMove = hasPermission(role, "booking.manage");
   const tz = tenant.timezone;
   const today = todayIn(tz);
   const date = sp.date && localMidnight(sp.date, tz) ? sp.date : today;
@@ -36,10 +40,22 @@ export default async function CalendarPage({ params, searchParams }: { params: P
   const allCourts = view !== "day" && courtFilter ? (await getCalendar(ctx, tz, { date: startDate, days: 1 })).courts : cal.courts;
   const month = view === "month" ? await getMonthSummary(ctx, tz, date.slice(0, 7), courtFilter) : null;
 
+  // Filtros de la vista diaria: deporte (columnas) y estado (turnos).
+  const sportFilter = sp.sport && /^[A-Z_0-9]{3,20}$/.test(sp.sport) ? sp.sport : undefined;
+  const statusFilter = sp.status && ["PENDING", "CONFIRMED", "COMPLETED", "NO_SHOW"].includes(sp.status) ? sp.status : undefined;
+  const sports = [...new Set(cal.courts.map((c) => c.sport))];
+  const dayCal: typeof cal = view === "day" && (sportFilter || statusFilter)
+    ? {
+        ...cal,
+        courts: cal.courts.filter((c) => !sportFilter || c.sport === sportFilter),
+        bookings: cal.bookings.filter((b) => !statusFilter || b.status === statusFilter),
+      }
+    : cal;
+
   const base = `/panel/${slug}/calendario`;
   const qs = (o: Partial<SP>) => {
     const p = new URLSearchParams();
-    const merged = { view, date, court: courtFilter, ...o };
+    const merged = { view, date, court: courtFilter, sport: sportFilter, status: statusFilter, ...o };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, String(v));
     return `${base}?${p.toString()}`;
   };
@@ -103,7 +119,28 @@ export default async function CalendarPage({ params, searchParams }: { params: P
       ) : month ? (
         <MonthGrid month={month} qs={qs} today={today} courts={allCourts} courtFilter={courtFilter} />
       ) : view === "day" ? (
-        <DayGrid slug={slug} tz={tz} cal={cal} date={date} qs={qs} />
+        <>
+          <form className={styles.filters} aria-label="Filtros">
+            <input type="hidden" name="view" value="day" />
+            <input type="hidden" name="date" value={date} />
+            {sports.length > 1 ? (
+              <select name="sport" className={ui.select} defaultValue={sportFilter ?? ""} aria-label="Deporte">
+                <option value="">Todos los deportes</option>
+                {sports.map((x) => <option key={x} value={x}>{SPORT_LABEL[x] ?? x}</option>)}
+              </select>
+            ) : null}
+            <select name="status" className={ui.select} defaultValue={statusFilter ?? ""} aria-label="Estado">
+              <option value="">Todos los estados</option>
+              <option value="CONFIRMED">Confirmadas</option>
+              <option value="PENDING">Pendientes</option>
+              <option value="COMPLETED">Jugadas</option>
+              <option value="NO_SHOW">Ausentes</option>
+            </select>
+            <button className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Filtrar</button>
+            {sportFilter || statusFilter ? <Link href={qs({ sport: undefined, status: undefined })} className={ui.muted}>Quitar filtros</Link> : null}
+          </form>
+          <DayGrid slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} canMove={canMove && date >= today} />
+        </>
       ) : (
         <WeekGrid slug={slug} tz={tz} cal={cal} qs={qs} courts={allCourts} courtFilter={courtFilter} today={today} />
       )}
@@ -113,7 +150,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
 
 type Cal = Awaited<ReturnType<typeof getCalendar>>;
 
-function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string }) {
+function DayGrid({ slug, tz, cal, date, qs, canMove }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string; canMove: boolean }) {
   const midnight = localMidnight(date, tz)!;
   const minuteOf = (d: Date) => Math.round(DateTime.fromJSDate(d).diff(midnight, "minutes").minutes);
   const day = cal.windows[0]!;
@@ -122,9 +159,12 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
   const gridEnd = allWindows.length ? Math.ceil(Math.max(...allWindows.map((w) => w.closeMinute)) / 60) * 60 : 24 * 60;
   const rows = Math.max(1, (gridEnd - gridStart) / ROW_MIN);
   const top = (m: number) => ((m - gridStart) / ROW_MIN) * ROW_PX;
-  const nowMin = minuteOf(new Date());
+  const now = new Date();
+  const nowMin = minuteOf(now);
+  const showNow = nowMin >= gridStart && nowMin <= gridEnd;
 
   return (
+    <DragLayer date={date} gridStart={gridStart} rowMin={ROW_MIN} rowPx={ROW_PX} enabled={canMove} move={moveBookingAction.bind(null, slug)}>
     <div className={styles.scroller}>
       {day.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`} style={{ marginBottom: "0.75rem" }}>Cerrado: {day.closedReason}</p> : null}
       <div className={styles.dayGrid} style={{ gridTemplateColumns: `64px repeat(${cal.courts.length}, minmax(150px, 1fr))` }}>
@@ -138,6 +178,7 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
             .map((m) => (
               <span key={m} style={{ top: top(m) }}>{minutesToHHMM(m)}</span>
             ))}
+          {showNow ? <span className={styles.nowLabel} style={{ top: top(nowMin) }}>{minutesToHHMM(nowMin)}</span> : null}
         </div>
         {cal.courts.map((c) => {
           const windows = day.courts.find((x) => x.courtId === c.id)?.windows ?? [];
@@ -149,7 +190,8 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
           const free: number[] = [];
           for (const w of windows) for (let m = w.openMinute; m + ROW_MIN <= w.closeMinute; m += ROW_MIN) if (!busy(m, m + ROW_MIN) && m >= nowMin) free.push(m);
           return (
-            <div key={c.id} className={styles.col} style={{ height: rows * ROW_PX }}>
+            <div key={c.id} className={styles.col} style={{ height: rows * ROW_PX }} data-court-id={c.id} data-court-name={c.name}>
+              {showNow ? <div className={styles.nowLine} style={{ top: top(nowMin) }} aria-hidden /> : null}
               {windows.map((w, i) => (
                 <div key={i} className={styles.open} style={{ top: top(w.openMinute), height: top(w.closeMinute) - top(w.openMinute) }} />
               ))}
@@ -171,7 +213,17 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
                 const s = minuteOf(b.startsAt);
                 const e = minuteOf(b.endsAt);
                 return (
-                  <Link key={b.id} href={`/panel/${slug}/reservas/${b.id}`} className={`${styles.event} ${styles[b.status] ?? ""}`} style={{ top: top(s), height: Math.max(ROW_PX, top(e) - top(s)) - 2 }}>
+                  <Link
+                    key={b.id}
+                    href={`/panel/${slug}/reservas/${b.id}`}
+                    className={`${styles.event} ${styles[b.status] ?? ""} ${canMove && movable(b) ? styles.draggable : ""}`}
+                    style={{ top: top(s), height: Math.max(ROW_PX, top(e) - top(s)) - 2 }}
+                    title={`${b.customerName} · ${formatLocalTime(b.startsAt, tz)}–${formatLocalTime(b.endsAt, tz)} · ${STATUS_LABEL[b.status]}${b.customerPhone ? ` · ${b.customerPhone}` : ""}`}
+                    draggable={false}
+                    {...(canMove && movable(b)
+                      ? { "data-booking-id": b.id, "data-version": b.version, "data-duration": b.durationMinutes, "data-from-court": b.courtId, "data-minute": s, "data-label": `${b.customerName} (${formatLocalTime(b.startsAt, tz)})` }
+                      : {})}
+                  >
                     <strong>{formatLocalTime(b.startsAt, tz)}–{formatLocalTime(b.endsAt, tz)}</strong>
                     <span>{b.customerName}</span>
                     <span className={styles.eventMeta}>{STATUS_LABEL[b.status]}</span>
@@ -183,7 +235,13 @@ function DayGrid({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: C
         })}
       </div>
     </div>
+    </DragLayer>
   );
+
+  function movable(b: Cal["bookings"][number]) {
+    const active = b.status === "CONFIRMED" || (b.status === "PENDING" && (!b.expiresAt || b.expiresAt > now));
+    return active && b.startsAt > now;
+  }
 }
 
 function MonthGrid({ month, qs, today, courts, courtFilter }: { month: Awaited<ReturnType<typeof getMonthSummary>>; qs: (o: Partial<SP>) => string; today: string; courts: Cal["courts"]; courtFilter?: string }) {
