@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { totp } from "../support/totp";
 import { E2E_ENV } from "../../playwright.config";
 
 const OWNER_PW = E2E_ENV.SEED_OWNER_PASSWORD;
@@ -15,6 +16,38 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Contraseña").fill(password);
   await page.getByRole("button", { name: "Ingresar" }).click();
+}
+
+// ---- Superadmin con verificación en dos pasos (obligatoria desde la Fase 3.1) ----
+let saSecret: string | null = null;
+let lastTotpWindow = -1;
+/** Código TOTP de una ventana nueva (no reutiliza el último código usado). */
+async function freshTotp(page: Page) {
+  while (Math.floor(Date.now() / 30_000) === lastTotpWindow) await page.waitForTimeout(1000);
+  lastTotpWindow = Math.floor(Date.now() / 30_000);
+  return totp(saSecret!);
+}
+async function loginSuperadmin(page: Page) {
+  await login(page, "superadmin@example.com", E2E_ENV.SEED_SUPERADMIN_PASSWORD);
+  const code = page.getByLabel("Código de verificación");
+  await Promise.race([page.waitForURL("**/panel"), code.waitFor()]);
+  if (await code.isVisible()) {
+    await code.fill(await freshTotp(page));
+    await page.getByRole("button", { name: "Verificar" }).click();
+    await page.waitForURL("**/panel");
+  }
+  await page.goto("/admin");
+  if (page.url().includes("/admin/seguridad")) {
+    // Alta del segundo factor por la interfaz real.
+    await page.getByLabel("Contraseña actual").fill(E2E_ENV.SEED_SUPERADMIN_PASSWORD);
+    await page.getByRole("button", { name: "Continuar" }).click();
+    await page.getByText("¿No podés escanear?").click();
+    saSecret = (await page.locator("details code").innerText()).trim();
+    await page.getByLabel("Ya guardé mis códigos de respaldo").check();
+    await page.getByLabel("Código de 6 dígitos").fill(await freshTotp(page));
+    await page.getByRole("button", { name: "Activar verificación en dos pasos" }).click();
+    await page.waitForURL("**/admin");
+  }
 }
 
 function tomorrow() {
@@ -235,9 +268,7 @@ test("cookies de sesión httpOnly y cabeceras de seguridad", async ({ page, cont
 });
 
 test("superadmin accede al panel de plataforma", async ({ page }) => {
-  await login(page, "superadmin@example.com", E2E_ENV.SEED_SUPERADMIN_PASSWORD);
-  await page.waitForURL("**/panel");
-  await page.goto("/admin");
+  await loginSuperadmin(page);
   await expect(page.getByRole("heading", { name: "Plataforma" })).toBeVisible();
   await expect(page.getByRole("cell", { name: /Pádel Centro/ })).toBeVisible();
 });
@@ -316,8 +347,7 @@ test("personal no puede exportar ni gestionar el equipo", async ({ page }) => {
 });
 
 test("superadmin: planes y auditoría con filtros", async ({ page }) => {
-  await login(page, "superadmin@example.com", E2E_ENV.SEED_SUPERADMIN_PASSWORD);
-  await page.waitForURL("**/panel");
+  await loginSuperadmin(page);
   await page.goto("/admin/planes");
   await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Nombre").fill("Plan E2E");
   await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Código").fill(`e2e-${Date.now() % 100000}`);

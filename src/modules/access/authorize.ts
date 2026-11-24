@@ -7,6 +7,8 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
+  /** Segundo factor activo (obligatorio para SUPERADMIN). Opcional para no romper usos existentes. */
+  twoFactorEnabled?: boolean;
   platformRole: PlatformRole;
 };
 

@@ -5,6 +5,7 @@ const LINKS = [
   { href: "/admin", label: "Complejos" },
   { href: "/admin/planes", label: "Planes" },
   { href: "/admin/auditoria", label: "Auditoría" },
+  { href: "/admin/seguridad", label: "Seguridad" },
 ];
 
 export function AdminNav({ current }: { current: string }) {

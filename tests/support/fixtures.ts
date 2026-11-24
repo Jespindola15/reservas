@@ -29,7 +29,7 @@ export function at(date: string, hhmm: string, tz = TZ): Date {
 
 export async function resetDb() {
   await owner.$executeRawUnsafe(
-    "TRUNCATE tenants, users, plans, rate_limits, audit_logs, verifications, notifications, job_runs RESTART IDENTITY CASCADE",
+    "TRUNCATE tenants, users, plans, rate_limits, audit_logs, verifications, notifications, job_runs, two_factors RESTART IDENTITY CASCADE",
   );
 }
 

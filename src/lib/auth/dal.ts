@@ -2,7 +2,7 @@ import "server-only";
 import { assertDbSafety } from "@/lib/db/safety";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAuth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db/prisma";
 import { AppError } from "@/lib/errors";
@@ -25,10 +25,10 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   if (!session) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, platformRole: true, isDisabled: true },
+    select: { id: true, name: true, email: true, platformRole: true, isDisabled: true, twoFactorEnabled: true },
   });
   if (!user || user.isDisabled) return null;
-  return { id: user.id, name: user.name, email: user.email, platformRole: user.platformRole };
+  return { id: user.id, name: user.name, email: user.email, platformRole: user.platformRole, twoFactorEnabled: user.twoFactorEnabled === true };
 });
 
 /** Para páginas: redirige al login si no hay sesión. */
@@ -51,8 +51,21 @@ export async function requireTenant(slug: string, permission: Permission): Promi
   return { ...access, user };
 }
 
+/** Acciones de superadministración: exige rol Y segundo factor activo. */
 export async function requireSuperadmin(): Promise<AuthUser> {
   const user = await requireUser();
   if (user.platformRole !== "SUPERADMIN") throw new AppError("FORBIDDEN");
+  if (!user.twoFactorEnabled) throw new AppError("FORBIDDEN", { reason: "two_factor_required" });
+  return user;
+}
+
+/**
+ * Páginas de superadministración: 404 si no es superadmin; si todavía no activó el segundo
+ * factor, lo manda a configurarlo (única página de /admin accesible sin 2FA).
+ */
+export async function requireSuperadminPage(path: string): Promise<AuthUser> {
+  const user = await requireUserPage(path);
+  if (user.platformRole !== "SUPERADMIN") notFound();
+  if (!user.twoFactorEnabled) redirect("/admin/seguridad");
   return user;
 }

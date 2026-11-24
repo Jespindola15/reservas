@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import { twoFactor } from "better-auth/plugins";
 import { prisma } from "@/lib/db/prisma";
 import { getEnv } from "@/lib/env";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
@@ -74,9 +75,16 @@ function createAuth() {
     customRules: {
       // Sin la cabecera de IP del proxy no se aplica el límite POR IP (evita que
       // una mala configuración bloquee el login de todos); siguen los límites por cuenta.
-      "/sign-in/email": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
+      // Por IP: 30 cada 15 min. Un complejo con varios empleados detrás de la misma conexión
+      // no se bloquea entre sí; la fuerza bruta contra UNA cuenta la frena el límite por
+      // cuenta (10 cada 15 min, hook de abajo), que no depende de la IP.
+      "/sign-in/email": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 30 } : false),
       "/request-password-reset": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
       "/reset-password": { window: 15 * 60, max: 10 },
+      // Segundo factor: pocos intentos por ventana (además del bloqueo propio del plugin).
+      "/two-factor/verify-totp": { window: 10 * 60, max: 10 },
+      "/two-factor/verify-backup-code": { window: 10 * 60, max: 5 },
+      "/two-factor/enable": { window: 10 * 60, max: 5 },
     },
     customStorage: {
       consume: (key, rule) => consumeRateLimit(`auth:${key}`, rule),
@@ -123,7 +131,12 @@ function createAuth() {
     },
   },
   telemetry: { enabled: false },
-  plugins: [nextCookies()],
+  plugins: [
+    // TOTP (Google Authenticator, Authy, 1Password...). Obligatorio para superadministradores
+    // (lo exige la capa de acceso). El secreto se guarda cifrado con BETTER_AUTH_SECRET.
+    twoFactor({ issuer: "TURNUP", skipVerificationOnEnable: false }),
+    nextCookies(),
+  ],
 });
 }
 

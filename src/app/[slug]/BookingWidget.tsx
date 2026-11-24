@@ -102,11 +102,16 @@ export function BookingWidget(props: {
           customer: { name: String(form.get("name") ?? ""), phone: String(form.get("phone") ?? ""), email: String(form.get("email") ?? "") },
           notes: String(form.get("notes") ?? "") || undefined,
           idempotencyKey: selection.idempotencyKey,
+          website: String(form.get("website") ?? "") || undefined,
         }),
       });
       const json = await res.json();
       if (!res.ok) {
-        setSubmitError(json?.error?.message ?? "No pudimos registrar la reserva.");
+        setSubmitError(
+          json?.error?.code === "LIMIT_REACHED"
+            ? "Ya tenés varias reservas activas en este complejo. Para reservar más, comunicate con el complejo."
+            : (json?.error?.message ?? "No pudimos registrar la reserva."),
+        );
         if (json?.error?.code === "SLOT_UNAVAILABLE") {
           setSelection(null);
           reload();
@@ -288,6 +293,8 @@ export function BookingWidget(props: {
               <label className={ui.field}>
                 <span className={ui.label}>Email</span>
                 <input className={ui.input} id="email" name="email" type="email" required maxLength={254} autoComplete="email" />
+                {/* Campo trampa: invisible para personas y lectores de pantalla; los bots lo completan. */}
+                <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, opacity: 0 }} />
               </label>
             </div>
             <label className={ui.field}>

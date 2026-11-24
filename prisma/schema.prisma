@@ -84,6 +84,32 @@ enum NotificationStatus {
   SKIPPED // ya no corresponde (p. ej. la reserva cambió o el complejo desactivó avisos)
 }
 
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+  MERCADOPAGO_MANUAL
+  OTHER
+}
+
+enum PaymentKind {
+  DEPOSIT
+  PAYMENT
+  REFUND
+}
+
+enum SeriesStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum TenantAssetKind {
+  LOGO
+  COVER
+  GALLERY
+}
+
 enum ImageStorage {
   DATABASE
   OBJECT
@@ -101,21 +127,41 @@ enum ActorType {
 // -----------------------------------------------------------------------------
 
 model User {
-  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String
-  email         String       @unique
-  emailVerified Boolean      @default(false) @map("email_verified")
-  image         String?
-  platformRole  PlatformRole @default(USER) @map("platform_role")
-  isDisabled    Boolean      @default(false) @map("is_disabled")
-  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  email            String       @unique
+  emailVerified    Boolean      @default(false) @map("email_verified")
+  image            String?
+  platformRole     PlatformRole @default(USER) @map("platform_role")
+  isDisabled       Boolean      @default(false) @map("is_disabled")
+  /// Better Auth (plugin twoFactor). Obligatorio para superadministradores.
+  twoFactorEnabled Boolean?     @default(false) @map("two_factor_enabled")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   sessions    Session[]
   accounts    Account[]
   memberships Membership[]
+  twoFactors  TwoFactor[]
 
   @@map("users")
+}
+
+/// Secreto TOTP y códigos de respaldo (cifrados por Better Auth).
+model TwoFactor {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  secret                  String
+  backupCodes             String    @map("backup_codes")
+  userId                  String    @map("user_id") @db.Uuid
+  verified                Boolean?  @default(true)
+  failedVerificationCount Int?      @default(0) @map("failed_verification_count")
+  lockedUntil             DateTime? @map("locked_until") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([secret])
+  @@map("two_factors")
 }
 
 model Session {
@@ -179,52 +225,67 @@ model RateLimit {
 // -----------------------------------------------------------------------------
 
 model Tenant {
-  id                      String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug                    String       @unique
-  name                    String
-  description             String?
-  logoUrl                 String?      @map("logo_url")
-  timezone                String       @default("America/Argentina/Buenos_Aires")
-  currency                String       @default("ARS") @db.Char(3)
-  status                  TenantStatus @default(ACTIVE)
-  bookingRequiresApproval Boolean      @default(true) @map("booking_requires_approval")
-  minLeadMinutes          Int          @default(60) @map("min_lead_minutes")
-  maxAdvanceDays          Int          @default(30) @map("max_advance_days")
+  id                        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug                      String       @unique
+  name                      String
+  description               String?
+  logoUrl                   String?      @map("logo_url")
+  timezone                  String       @default("America/Argentina/Buenos_Aires")
+  currency                  String       @default("ARS") @db.Char(3)
+  status                    TenantStatus @default(ACTIVE)
+  bookingRequiresApproval   Boolean      @default(true) @map("booking_requires_approval")
+  minLeadMinutes            Int          @default(60) @map("min_lead_minutes")
+  maxAdvanceDays            Int          @default(30) @map("max_advance_days")
   /// Minutos que una solicitud PENDING retiene el turno antes de vencer.
-  pendingExpirationMinutes Int         @default(30) @map("pending_expiration_minutes")
+  pendingExpirationMinutes  Int          @default(30) @map("pending_expiration_minutes")
   /// Hasta cuántos minutos antes del inicio el jugador puede cancelar con su enlace.
-  publicCancellationMinutes Int        @default(120) @map("public_cancellation_minutes")
+  publicCancellationMinutes Int          @default(120) @map("public_cancellation_minutes")
   /// Interruptor general de emails del complejo.
-  notificationsEnabled    Boolean      @default(true) @map("notifications_enabled")
-  notifyPlayers           Boolean      @default(true) @map("notify_players")
-  notifyOwner             Boolean      @default(true) @map("notify_owner")
+  notificationsEnabled      Boolean      @default(true) @map("notifications_enabled")
+  notifyPlayers             Boolean      @default(true) @map("notify_players")
+  notifyOwner               Boolean      @default(true) @map("notify_owner")
   /// Destino de los avisos al complejo (si es null se usa contactEmail).
-  ownerNotificationEmail  String?      @map("owner_notification_email")
+  ownerNotificationEmail    String?      @map("owner_notification_email")
   /// Horas antes del turno para el recordatorio (0 = sin recordatorio).
-  reminderHoursBefore     Int          @default(3) @map("reminder_hours_before")
-  digestEnabled           Boolean      @default(false) @map("digest_enabled")
+  reminderHoursBefore       Int          @default(3) @map("reminder_hours_before")
+  digestEnabled             Boolean      @default(false) @map("digest_enabled")
   /// Hora local (0-23) del resumen diario de próximas reservas.
-  digestHour              Int          @default(8) @map("digest_hour")
-  contactPhone            String?      @map("contact_phone")
-  contactEmail            String?      @map("contact_email")
-  address                 String?
-  createdAt               DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt               DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  digestHour                Int          @default(8) @map("digest_hour")
+  contactPhone              String?      @map("contact_phone")
+  contactEmail              String?      @map("contact_email")
+  address                   String?
+  /// Personalización de la página pública.
+  brandColor                String?      @map("brand_color")
+  whatsapp                  String?
+  instagram                 String?
+  facebook                  String?
+  website                   String?
+  services                  String[]     @default([])
+  cancellationPolicy        String?      @map("cancellation_policy")
+  /// Asistente de configuración: último paso completado (0-7) y fin.
+  onboardingStep            Int          @default(0) @map("onboarding_step")
+  onboardingCompletedAt     DateTime?    @map("onboarding_completed_at") @db.Timestamptz(3)
+  createdAt                 DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships   Membership[]
-  courts        Court[]
-  scheduleRules CourtScheduleRule[]
-  priceRules    CourtPriceRule[]
-  customers     Customer[]
-  bookings      Booking[]
-  blocks        AvailabilityBlock[]
-  allocations   CourtAllocation[]
-  subscriptions Subscription[]
-  exceptions    ScheduleException[]
-  courtImages   CourtImage[]
-  invitations   Invitation[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
+  memberships          Membership[]
+  courts               Court[]
+  scheduleRules        CourtScheduleRule[]
+  priceRules           CourtPriceRule[]
+  customers            Customer[]
+  bookings             Booking[]
+  blocks               AvailabilityBlock[]
+  allocations          CourtAllocation[]
+  subscriptions        Subscription[]
+  exceptions           ScheduleException[]
+  courtImages          CourtImage[]
+  invitations          Invitation[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  payments             BookingPayment[]
+  series               BookingSeries[]
+  assets               TenantAsset[]
+  subscriptionPayments SubscriptionPayment[]
 
   @@map("tenants")
 }
@@ -276,8 +337,9 @@ model Subscription {
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan   Plan   @relation(fields: [planId], references: [id])
+  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     Plan                  @relation(fields: [planId], references: [id])
+  payments SubscriptionPayment[]
 
   @@index([tenantId])
   @@map("subscriptions")
@@ -312,6 +374,7 @@ model Court {
   scheduleRules CourtScheduleRule[]
   priceRules    CourtPriceRule[]
   bookings      Booking[]
+  series        BookingSeries[]
   blocks        AvailabilityBlock[]
   allocations   CourtAllocation[]
 
@@ -341,13 +404,13 @@ model CourtScheduleRule {
 /// Precio por duración. weekday y la franja horaria son opcionales: la regla más
 /// específica que coincida gana (weekday + franja > franja > weekday > general).
 model CourtPriceRule {
-  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String @map("tenant_id") @db.Uuid
-  courtId         String @map("court_id") @db.Uuid
-  durationMinutes Int    @map("duration_minutes")
-  weekday         Int?   @db.SmallInt
-  startMinute     Int?   @map("start_minute")
-  endMinute       Int?   @map("end_minute")
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  courtId         String    @map("court_id") @db.Uuid
+  durationMinutes Int       @map("duration_minutes")
+  weekday         Int?      @db.SmallInt
+  startMinute     Int?      @map("start_minute")
+  endMinute       Int?      @map("end_minute")
   /// Tarifa para una fecha puntual (día operativo). Tiene prioridad máxima.
   specialDate     DateTime? @map("special_date") @db.Date
   amount          Int
@@ -375,8 +438,9 @@ model Customer {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   bookings Booking[]
+  series   BookingSeries[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, contactKey])
@@ -413,6 +477,8 @@ model Booking {
   confirmedAt        DateTime?     @map("confirmed_at") @db.Timestamptz(3)
   cancelledAt        DateTime?     @map("cancelled_at") @db.Timestamptz(3)
   cancelReason       String?       @map("cancel_reason")
+  /// Serie recurrente a la que pertenece (null = turno suelto).
+  seriesId           String?       @map("series_id") @db.Uuid
   /// Optimistic locking para cambios de estado/reprogramación.
   version            Int           @default(1)
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -422,16 +488,117 @@ model Booking {
   court      Court            @relation(fields: [tenantId, courtId], references: [tenantId, id])
   customer   Customer         @relation(fields: [tenantId, customerId], references: [tenantId, id])
   allocation CourtAllocation?
+  series     BookingSeries?   @relation(fields: [tenantId, seriesId], references: [tenantId, id])
+  payments   BookingPayment[]
 
+  @@unique([tenantId, id])
   @@unique([tenantId, code])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, startsAt])
   @@index([courtId, startsAt])
   @@index([status, expiresAt])
+  @@index([tenantId, seriesId])
   @@map("bookings")
 }
 
 /// Feriados, cierres extraordinarios y días con horario especial. courtId null = todo el complejo.
+/// Pago o seña registrado A MANO por el complejo (efectivo, transferencia...). Nunca datos de tarjeta.
+model BookingPayment {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  bookingId        String        @map("booking_id") @db.Uuid
+  kind             PaymentKind
+  method           PaymentMethod
+  /// Centavos, siempre positivo. Las devoluciones usan kind = REFUND.
+  amount           Int
+  note             String?
+  paidAt           DateTime      @default(now()) @map("paid_at") @db.Timestamptz(3)
+  recordedByUserId String?       @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, paidAt])
+  @@index([bookingId])
+  @@map("booking_payments")
+}
+
+/// Reserva fija semanal (mismo día, hora y cancha) entre dos fechas.
+model BookingSeries {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  courtId         String       @map("court_id") @db.Uuid
+  customerId      String       @map("customer_id") @db.Uuid
+  /// 1 = lunes ... 7 = domingo (ISO).
+  weekday         Int
+  /// Minutos desde la medianoche local.
+  startMinute     Int          @map("start_minute")
+  durationMinutes Int          @map("duration_minutes")
+  startsOn        DateTime     @map("starts_on") @db.Date
+  endsOn          DateTime     @map("ends_on") @db.Date
+  status          SeriesStatus @default(ACTIVE)
+  notes           String?
+  createdByUserId String?      @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  court    Court     @relation(fields: [tenantId, courtId], references: [tenantId, id])
+  customer Customer  @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  bookings Booking[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("booking_series")
+}
+
+/// Logo, portada y galería del complejo.
+model TenantAsset {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String          @map("tenant_id") @db.Uuid
+  kind        TenantAssetKind
+  storage     ImageStorage    @default(DATABASE)
+  data        Bytes?
+  objectKey   String?         @map("object_key")
+  contentType String          @map("content_type")
+  sizeBytes   Int             @map("size_bytes")
+  width       Int?
+  height      Int?
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind, sortOrder])
+  @@map("tenant_assets")
+}
+
+/// Cobro de suscripción registrado a mano por el superadmin. Preparado para Mercado Pago (external_*).
+model SubscriptionPayment {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String        @map("tenant_id") @db.Uuid
+  subscriptionId   String?       @map("subscription_id") @db.Uuid
+  amount           Int
+  currency         String        @default("ARS") @db.Char(3)
+  method           PaymentMethod
+  paidAt           DateTime      @map("paid_at") @db.Timestamptz(3)
+  periodStart      DateTime      @map("period_start") @db.Date
+  periodEnd        DateTime      @map("period_end") @db.Date
+  note             String?
+  externalProvider String?       @map("external_provider")
+  externalId       String?       @map("external_id")
+  recordedByUserId String?       @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([externalProvider, externalId])
+  @@index([tenantId, paidAt])
+  @@map("subscription_payments")
+}
+
 model ScheduleException {
   id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String                @map("tenant_id") @db.Uuid
@@ -453,20 +620,20 @@ model ScheduleException {
 
 /// Imágenes de canchas guardadas en la base (tamaño acotado, tipo verificado por firma de bytes).
 model CourtImage {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  courtId     String   @map("court_id") @db.Uuid
-  contentType String   @map("content_type")
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  courtId     String       @map("court_id") @db.Uuid
+  contentType String       @map("content_type")
   storage     ImageStorage @default(DATABASE)
   /// Bytes en la base (storage = DATABASE). Null si está en almacenamiento de objetos.
   data        Bytes?
   /// Clave en el bucket S3/R2 (storage = OBJECT).
-  objectKey   String?  @map("object_key")
+  objectKey   String?      @map("object_key")
   width       Int?
   height      Int?
-  sizeBytes   Int      @map("size_bytes")
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  sizeBytes   Int          @map("size_bytes")
+  sortOrder   Int          @default(0) @map("sort_order")
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   court  Court  @relation(fields: [tenantId, courtId], references: [tenantId, id], onDelete: Cascade)

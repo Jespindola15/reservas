@@ -28,6 +28,8 @@ export const publicBookingRequestSchema = z.object({
   }),
   notes: trimmed(0, 500).optional(),
   idempotencyKey: idempotencyKeySchema,
+  /** Campo trampa (oculto para personas). Si viene con contenido, es un bot. */
+  website: z.string().max(200).optional(),
 });
 export type PublicBookingRequest = z.infer<typeof publicBookingRequestSchema>;
 

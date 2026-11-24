@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
 import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
-import { requireUserPage } from "@/lib/auth/dal";
+import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listTenantsForPlatform, platformMetrics } from "@/modules/platform/service";
 import { SignOutButton } from "../panel/SignOutButton";
 import { AdminNav } from "./AdminNav";
@@ -13,9 +12,8 @@ import { assignAdminAction, createTenantAction, setTenantStatusAction } from "./
 export const metadata: Metadata = { title: "Superadministrador" };
 
 export default async function AdminPage() {
-  const user = await requireUserPage("/admin");
-  // No revelar que la ruta existe a quien no es superadmin.
-  if (user.platformRole !== "SUPERADMIN") notFound();
+  // 404 a quien no es superadmin (no revela que la ruta existe); sin 2FA, a configurarlo.
+  const user = await requireSuperadminPage("/admin");
 
   const [metrics, tenants] = await Promise.all([platformMetrics(user), listTenantsForPlatform(user)]);
 

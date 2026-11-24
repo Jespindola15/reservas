@@ -43,6 +43,8 @@ export function mapDbError(e: unknown, overlapCode: "SLOT_UNAVAILABLE" | "BLOCK_
 async function expireOverdueInTenant(tx: Tx, tenantId: string) {
   await tx.$queryRaw`SELECT booking_id FROM app_expire_pending_bookings(1000, ${tenantId}::uuid)`;
 }
+/** Máximo de reservas online activas (futuras, pendientes o confirmadas) por jugador y complejo. */
+export const MAX_ACTIVE_ONLINE_PER_CUSTOMER = 4;
 export const ACTIVE_STATUSES: readonly BookingStatus[] = ["PENDING", "CONFIRMED"];
 
 const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
@@ -270,6 +272,16 @@ export async function createBooking(
           phone: input.customer.phone.trim(),
           email,
         });
+
+        // Anti reservas falsas: un mismo jugador (email o teléfono) no puede acaparar turnos online.
+        if (input.source === "ONLINE") {
+          const active = await tx.booking.count({
+            where: { tenantId: ctx.tenantId, customerId, status: { in: ["PENDING", "CONFIRMED"] }, endsAt: { gt: now } },
+          });
+          if (active >= MAX_ACTIVE_ONLINE_PER_CUSTOMER) {
+            throw new AppError("LIMIT_REACHED", { resource: "active_bookings", max: MAX_ACTIVE_ONLINE_PER_CUSTOMER });
+          }
+        }
 
         const status: BookingStatus =
           input.source === "ONLINE" && tenant.bookingRequiresApproval ? "PENDING" : "CONFIRMED";

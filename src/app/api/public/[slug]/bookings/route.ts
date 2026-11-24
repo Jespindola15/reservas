@@ -1,6 +1,8 @@
 import { PUBLIC_ACTOR } from "@/lib/audit";
 import { enforceIpRateLimit, jsonError, jsonOk, readJson } from "@/lib/http";
 import { getClientIp } from "@/lib/security/client-ip";
+import { logger } from "@/lib/logger";
+import { AppError } from "@/lib/errors";
 import { parseOrThrow } from "@/lib/validation";
 import { publicBookingRequestSchema } from "@/modules/booking/schemas";
 import { createBooking } from "@/modules/booking/service";
@@ -24,6 +26,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     await enforceIpRateLimit(ip, `book:t:${slug}`, { window: 600, max: 8 });
 
     const body = parseOrThrow(publicBookingRequestSchema, await readJson(req));
+    if (body.website) {
+      logger.warn("booking.honeypot", { slug });
+      throw new AppError("VALIDATION_ERROR");
+    }
     const ctx = await publicTenantContext(slug);
     const { booking, replayed } = await createBooking(
       ctx,

@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
 import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
-import { requireUserPage } from "@/lib/auth/dal";
+import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listPlans } from "@/modules/platform/plans";
 import { listTenantsForPlatform } from "@/modules/platform/service";
 import { SignOutButton } from "../../panel/SignOutButton";
@@ -33,8 +32,7 @@ function PlanFields({ plan }: { plan?: PlanRow }) {
 }
 
 export default async function PlansPage() {
-  const user = await requireUserPage("/admin/planes");
-  if (user.platformRole !== "SUPERADMIN") notFound();
+  const user = await requireSuperadminPage("/admin/planes");
   const plans = await listPlans(user);
   const tenants = await listTenantsForPlatform(user);
   const now = new Date();

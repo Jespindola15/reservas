@@ -16,7 +16,7 @@ export default async function globalSetup() {
   const db = new Client({ connectionString: E2E_ENV.MIGRATION_DATABASE_URL });
   await db.connect();
   try {
-    await db.query("TRUNCATE tenants, users, plans, rate_limits, audit_logs, verifications, notifications, job_runs RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE tenants, users, plans, rate_limits, audit_logs, verifications, notifications, job_runs, two_factors RESTART IDENTITY CASCADE");
   } finally {
     await db.end();
   }

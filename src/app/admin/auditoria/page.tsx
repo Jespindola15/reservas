@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
-import { requireUserPage } from "@/lib/auth/dal";
+import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { listAuditLogs } from "@/modules/platform/plans";
 import { listTenantsForPlatform } from "@/modules/platform/service";
@@ -25,8 +24,7 @@ function summarize(meta: unknown): string {
 }
 
 export default async function AuditPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUserPage("/admin/auditoria");
-  if (user.platformRole !== "SUPERADMIN") notFound();
+  const user = await requireSuperadminPage("/admin/auditoria");
   const sp = await searchParams;
   const tenants = await listTenantsForPlatform(user);
   let result: Awaited<ReturnType<typeof listAuditLogs>> | null = null;
