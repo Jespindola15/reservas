@@ -98,6 +98,8 @@ export async function getPublicBooking(slug: string, code: string, token: string
     paymentStatus: b.paymentStatus,
     amountDue: b.amountDue,
     transferReportedAt: b.transferReportedAt,
+    /** Hora del servidor al armar la vista: el contador del jugador no depende de su reloj. */
+    serverNow: now,
     // Datos para transferir: solo mientras la reserva espera la transferencia o su revisión.
     transfer: !expired && b.status === "PENDING" && (b.paymentStatus === "AWAITING_TRANSFER" || b.paymentStatus === "TRANSFER_REPORTED")
       ? (readTransferSnapshot(b.transferSnapshot) ?? (await publicTransferInfo(ctx)))

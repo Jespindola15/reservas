@@ -1,0 +1,29 @@
+# Supabase pausa los proyectos gratuitos tras 1 semana sin actividad; pausado, las imágenes del
+# catálogo dejan de verse. Este job hace una consulta mínima (listar 1 objeto) cada 3 días para
+# mantenerlo activo. Usa los mismos secretos que el respaldo de imágenes; sin ellos, se saltea.
+name: Mantener activo el almacenamiento de imágenes
+on:
+  schedule:
+    - cron: "23 13 */3 * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STORAGE_BACKUP_ENDPOINT: ${{ secrets.STORAGE_BACKUP_ENDPOINT }}
+      STORAGE_BACKUP_BUCKET: ${{ secrets.STORAGE_BACKUP_BUCKET }}
+      AWS_DEFAULT_REGION: ${{ secrets.STORAGE_BACKUP_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_BACKUP_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_BACKUP_SECRET_ACCESS_KEY }}
+      # Compatibilidad con proveedores S3 no-AWS (sin sumas de verificación nuevas obligatorias).
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    steps:
+      - name: Consulta mínima al bucket
+        run: |
+          if [ -z "$STORAGE_BACKUP_BUCKET" ]; then echo "Sin secretos de almacenamiento: se saltea." >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          aws s3api list-objects-v2 --bucket "$STORAGE_BACKUP_BUCKET" --max-keys 1 --endpoint-url "$STORAGE_BACKUP_ENDPOINT" > /dev/null
+          echo "Almacenamiento activo ($(date -u +%FT%TZ))." >> "$GITHUB_STEP_SUMMARY"

@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: "Calendario" };
 const ROW_MIN = 30; // minutos por fila
 const ROW_PX = 40;
 
-type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string; sport?: string; status?: string; grilla?: string };
+type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string; sport?: string; status?: string; grilla?: string; ver?: string };
 const SPORT_LABEL: Record<string, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otro" };
 
 export default async function CalendarPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<SP> }) {
@@ -140,7 +140,7 @@ export default async function CalendarPage({ params, searchParams }: { params: P
           </form>
           {/* Celular: agenda en lista (con horarios libres a un toque). Escritorio/tablet: grilla con arrastre. */}
           <div className={sp.grilla === "1" ? styles.hidden : styles.agendaOnly}>
-            <DayAgenda slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} />
+            <DayAgenda slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} selected={sp.ver} />
             <Link href={qs({ grilla: "1" })} className={`${ui.button} ${ui.buttonGhost} ${ui.buttonSmall}`} style={{ marginTop: "var(--sp-4)" }}>Ver como grilla</Link>
           </div>
           <div className={sp.grilla === "1" ? undefined : styles.gridOnly}>
@@ -157,63 +157,112 @@ export default async function CalendarPage({ params, searchParams }: { params: P
 
 type Cal = Awaited<ReturnType<typeof getCalendar>>;
 
-/** Agenda del día para celular: turnos en orden y, por cancha, los horarios libres para reservar con un toque. */
-function DayAgenda({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string }) {
+/**
+ * Agenda del día para celular: se elige UNA cancha (las demás quedan plegadas) y se ve su día hora
+ * por hora: libre (un toque para reservar), ocupado (abre la reserva), bloqueado o ya pasado.
+ * La lista completa de turnos del día queda plegada debajo.
+ */
+function DayAgenda({ slug, tz, cal, date, qs, selected }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string; selected?: string }) {
   const midnight = localMidnight(date, tz)!;
   const minuteOf = (d: Date) => Math.round(DateTime.fromJSDate(d).diff(midnight, "minutes").minutes);
   const day = cal.windows[0]!;
   const nowMin = minuteOf(new Date());
   const items = [...cal.bookings].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  type Slot = { m: number; state: "free" | "busy" | "blocked" | "past"; booking?: (typeof items)[number] };
+  const slotsFor = (courtId: string): Slot[] => {
+    const windows = day.courts.find((x) => x.courtId === courtId)?.windows ?? [];
+    const out: Slot[] = [];
+    for (const w of windows) {
+      for (let m = w.openMinute; m + 60 <= w.closeMinute; m += 60) {
+        const booking = items.find((b) => b.courtId === courtId && minuteOf(b.startsAt) < m + 60 && minuteOf(b.endsAt) > m);
+        const blocked = cal.blocks.some((b) => (b.courtId === courtId || b.courtId === null) && minuteOf(b.startsAt) < m + 60 && minuteOf(b.endsAt) > m);
+        out.push({ m, booking, state: booking ? "busy" : blocked ? "blocked" : m < nowMin ? "past" : "free" });
+      }
+    }
+    return out;
+  };
+  const courts = cal.courts.map((c) => {
+    const slots = slotsFor(c.id);
+    return { ...c, slots, free: slots.filter((x) => x.state === "free").length, busy: slots.filter((x) => x.state === "busy").length };
+  });
+  const current = courts.find((c) => c.id === selected) ?? courts[0];
   return (
     <div className={ui.stack}>
       {day.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`}>Cerrado: {day.closedReason}</p> : null}
-      {items.length === 0 ? (
-        <div className={ui.empty}><Icon name="calendar" size={28} /><span>No hay turnos este día.</span></div>
-      ) : (
-        <ul className={ui.list} aria-label="Turnos del día">
-          {items.map((b) => (
-            <li key={b.id}>
-              <Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.listRow}>
-                <span className={styles.agTime}>{formatLocalTime(b.startsAt, tz)}<small>{formatLocalTime(b.endsAt, tz)}</small></span>
-                <span className={ui.listMain}><strong>{b.customerName}</strong><span className={ui.faint}>{b.court.name}</span></span>
-                <StatusBadge status={b.status} paymentStatus={b.paymentStatus} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      {cal.blocks.length ? (
-        <ul className={ui.list} aria-label="Bloqueos">
-          {cal.blocks.map((b) => (
-            <li key={b.id} className={ui.listRow}><Icon name="clock" /><span className={ui.listMain}><strong>Bloqueado {formatLocalTime(b.startsAt, tz)}–{formatLocalTime(b.endsAt, tz)}</strong><span className={ui.faint}>{cal.courts.find((c) => c.id === b.courtId)?.name ?? "Todas las canchas"} · {b.reason}</span></span></li>
-          ))}
-        </ul>
-      ) : null}
-      <section aria-label="Horarios libres">
-        <h2 className={styles.freeTitle}>Horarios libres</h2>
-        {cal.courts.map((c) => {
-          const windows = day.courts.find((x) => x.courtId === c.id)?.windows ?? [];
-          const busy = (s: number, e: number) =>
-            cal.bookings.some((b) => b.courtId === c.id && minuteOf(b.startsAt) < e && minuteOf(b.endsAt) > s) ||
-            cal.blocks.some((b) => (b.courtId === c.id || b.courtId === null) && minuteOf(b.startsAt) < e && minuteOf(b.endsAt) > s);
-          const free: number[] = [];
-          for (const w of windows) for (let m = w.openMinute; m + 60 <= w.closeMinute; m += 60) if (!busy(m, m + 60) && m >= nowMin) free.push(m);
-          return (
-            <div key={c.id} className={styles.freeCourt}>
+      {courts.length ? (
+        <nav className={styles.courtTabs} aria-label="Cancha">
+          {courts.map((c) => (
+            <Link key={c.id} href={qs({ ver: c.id })} className={c.id === current?.id ? styles.courtTabActive : styles.courtTab} aria-current={c.id === current?.id ? "true" : undefined} scroll={false}>
               <strong>{c.name}</strong>
-              {free.length === 0 ? <span className={ui.faint}>Sin horarios libres</span> : (
-                <div className={styles.freeChips}>
-                  {free.map((m) => (
-                    <Link key={m} className={ui.chip} href={qs({ nueva: "1", court: c.id, time: minutesToHHMM(m), date: m >= 1440 ? midnight.plus({ days: 1 }).toISODate()! : date })} aria-label={`Reservar ${c.name} a las ${minutesToHHMM(m)}`}>
-                      {minutesToHHMM(m % 1440)}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </section>
+              <span>{c.free} libre{c.free === 1 ? "" : "s"} · {c.busy} ocupado{c.busy === 1 ? "" : "s"}</span>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
+      {current ? (
+        <section aria-label={`Día de ${current.name}`}>
+          {current.slots.length === 0 ? <p className={ui.empty}>{current.name} no abre este día.</p> : (
+            <ul className={styles.hourGrid}>
+              {current.slots.map((x) => {
+                const hh = minutesToHHMM(x.m % 1440);
+                if (x.state === "busy" && x.booking) {
+                  return (
+                    <li key={x.m}>
+                      <Link href={`/panel/${slug}/reservas/${x.booking.id}`} className={`${styles.hourCell} ${styles.hourBusy}`}>
+                        <span className={styles.hourTime}>{hh}</span>
+                        <span className={styles.hourWho}>{x.booking.customerName}</span>
+                        <StatusBadge status={x.booking.status} paymentStatus={x.booking.paymentStatus} />
+                      </Link>
+                    </li>
+                  );
+                }
+                if (x.state === "free") {
+                  return (
+                    <li key={x.m}>
+                      <Link className={`${styles.hourCell} ${styles.hourFree}`} href={qs({ nueva: "1", court: current.id, time: minutesToHHMM(x.m), date: x.m >= 1440 ? midnight.plus({ days: 1 }).toISODate()! : date })} aria-label={`Reservar ${current.name} a las ${hh}`}>
+                        <span className={styles.hourTime}>{hh}</span><span className={styles.hourWho}>Libre · reservar</span>
+                      </Link>
+                    </li>
+                  );
+                }
+                return (
+                  <li key={x.m}>
+                    <span className={`${styles.hourCell} ${x.state === "blocked" ? styles.hourBlocked : styles.hourPast}`}>
+                      <span className={styles.hourTime}>{hh}</span><span className={styles.hourWho}>{x.state === "blocked" ? "Bloqueado" : "Pasado"}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+      <details className={ui.details} open={items.length > 0 && items.length <= 6}>
+        <summary>Todos los turnos del día ({items.length})</summary>
+        {items.length === 0 ? <p className={ui.faint}>No hay turnos este día.</p> : (
+          <ul className={ui.list} aria-label="Turnos del día">
+            {items.map((b) => (
+              <li key={b.id}>
+                <Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.listRow}>
+                  <span className={styles.agTime}>{formatLocalTime(b.startsAt, tz)}<small>{formatLocalTime(b.endsAt, tz)}</small></span>
+                  <span className={ui.listMain}><strong>{b.customerName}</strong><span className={ui.faint}>{b.court.name}</span></span>
+                  <StatusBadge status={b.status} paymentStatus={b.paymentStatus} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+      {cal.blocks.length ? (
+        <details className={ui.details}>
+          <summary>Bloqueos del día ({cal.blocks.length})</summary>
+          <ul className={ui.list} aria-label="Bloqueos">
+            {cal.blocks.map((b) => (
+              <li key={b.id} className={ui.listRow}><Icon name="clock" /><span className={ui.listMain}><strong>{formatLocalTime(b.startsAt, tz)}–{formatLocalTime(b.endsAt, tz)}</strong><span className={ui.faint}>{cal.courts.find((c) => c.id === b.courtId)?.name ?? "Todas las canchas"} · {b.reason}</span></span></li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

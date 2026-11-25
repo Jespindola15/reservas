@@ -4,7 +4,8 @@ import { audit, type Actor } from "@/lib/audit";
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { randomUUID } from "node:crypto";
-import { deleteObjectQuietly, getObjectStore, optimizeImage, uploadStore } from "@/lib/storage/images";
+import { deleteObjectQuietly, getObjectStore, optimizeImage, publicObjectUrl, uploadStore } from "@/lib/storage/images";
+import { assertTenantImageQuota } from "@/lib/storage/quota";
 import { parseOrThrow } from "@/lib/validation";
 import { DateTime } from "luxon";
 import { dbDateToString, localMidnight, stringToDbDate, weekdayOf, windowsForDate } from "@/modules/booking/time";
@@ -412,10 +413,11 @@ export async function addCourtImage(ctx: TenantContext, courtId: string, bytes: 
   if (img.data.length > MAX_IMAGE_BYTES) throw new AppError("IMAGE_INVALID");
   const store = uploadStore();
   const objectKey = store ? `tenants/${ctx.tenantId}/courts/${courtId}/${randomUUID()}.webp` : null;
-  // Verificar permisos/límites ANTES de subir al bucket.
+  // Verificar permisos/límites ANTES de subir al bucket (por cancha y cupo total del complejo).
   await withTenant(ctx, async (tx) => {
     await assertCourt(tx, ctx.tenantId, courtId);
     if ((await tx.courtImage.count({ where: { tenantId: ctx.tenantId, courtId } })) >= MAX_IMAGES) throw new AppError("LIMIT_REACHED");
+    await assertTenantImageQuota(tx, ctx.tenantId, img.data.length);
   });
   if (store && objectKey) await store.put(objectKey, img.data, img.contentType);
   try {
@@ -490,7 +492,7 @@ export async function reorder(ids: string[], id: string, direction: "up" | "down
 }
 
 /** Lectura de una imagen para servirla: desde la base o desde el bucket, transparente. */
-export async function getCourtImage(ctx: TenantContext, courtId: string, imageId: string): Promise<{ contentType: string; data: Uint8Array } | null> {
+export async function getCourtImage(ctx: TenantContext, courtId: string, imageId: string): Promise<{ contentType: string; data: Uint8Array } | { redirect: string } | null> {
   const row = await withTenant(ctx, (tx) =>
     tx.courtImage.findFirst({
       where: { id: imageId, courtId, tenantId: ctx.tenantId },
@@ -499,6 +501,8 @@ export async function getCourtImage(ctx: TenantContext, courtId: string, imageId
   );
   if (!row) return null;
   if (row.storage === "DATABASE") return row.data ? { contentType: row.contentType, data: row.data } : null;
+  const direct = row.objectKey ? publicObjectUrl(row.objectKey) : null;
+  if (direct) return { redirect: direct };
   const obj = row.objectKey ? await getObjectStore()?.get(row.objectKey) : null;
   return obj ? { contentType: row.contentType, data: obj.data } : null;
 }

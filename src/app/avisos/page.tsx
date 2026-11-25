@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDateTime } from "@/lib/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
@@ -11,7 +12,6 @@ import { markMyInboxReadAction } from "../cuenta/actions";
 
 export const metadata: Metadata = { title: "Avisos — TURNUP", robots: { index: false } };
 
-const dt = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 export default async function PlayerInbox() {
   const user = await getCurrentUser().catch(() => null);
@@ -31,7 +31,7 @@ export default async function PlayerInbox() {
             <li key={n.id} className={styles.turn} style={n.readAt ? { opacity: 0.75 } : undefined}>
               <div className={styles.turnHead}>
                 <strong>{n.link?.startsWith("/") ? <Link href={n.link} className={ui.linkPlain}>{n.title}</Link> : n.title}</strong>
-                <span className={styles.meta}>{dt.format(n.createdAt)}{n.readAt ? "" : " · nuevo"}</span>
+                <span className={styles.meta}>{fmtDateTime(n.createdAt)}{n.readAt ? "" : " · nuevo"}</span>
               </div>
               {n.body ? <p className={styles.meta} style={{ margin: 0 }}>{n.body}</p> : null}
             </li>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import Link from "next/link";
 import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
@@ -8,7 +9,7 @@ import { listUsers } from "@/modules/platform/users";
 export const metadata: Metadata = { title: "Usuarios · Superadministrador" };
 
 const ROLE: Record<string, string> = { OWNER: "Dueño", ADMIN: "Admin", STAFF: "Personal" };
-const day = (d: Date) => d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+const day = (d: Date) => fmtDate(d);
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await requireSuperadminPage("/admin/usuarios");
@@ -52,6 +53,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                     </td>
                     <td data-label="Estado">
                       {u.anonymizedAt ? <span className={ui.badge}>Eliminado</span> : u.isDisabled ? <span className={`${ui.badge} ${ui.badgePENDING}`}>Suspendido</span> : <span className={`${ui.badge} ${ui.badgeCONFIRMED}`}>Activo</span>}
+                      {u.isDisabled && !u.anonymizedAt && u.suspendedReason ? <div className={ui.faint}>{u.suspendedReason}</div> : null}
                     </td>
                     <td data-label="Alta">{day(u.createdAt)}</td>
                   </tr>

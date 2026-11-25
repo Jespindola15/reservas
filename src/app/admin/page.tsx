@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import Link from "next/link";
 import { Icon } from "@/components/shell/icons";
 import ui from "@/components/ui.module.css";
@@ -6,9 +7,11 @@ import { requireSuperadminPage } from "@/lib/auth/dal";
 import { formatMoney } from "@/modules/booking/pricing";
 import { platformOverview, tenantActivity } from "@/modules/platform/billing";
 import { listTenantsForPlatform } from "@/modules/platform/service";
+import { withPlatformAdmin } from "@/lib/db/tenant-context";
+import { imageStorageUsage } from "@/lib/storage/usage";
 
 const SUB_LABEL: Record<string, string> = { TRIAL: "Prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (en gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
-const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "—");
+const day = (d: Date | null | undefined) => (d ? fmtDate(d) : "—");
 
 export const metadata: Metadata = { title: "Superadministrador" };
 
@@ -23,6 +26,8 @@ export default async function AdminPage() {
   if (o.system.dbBytes > o.system.dbLimitBytes * 0.7) alerts.push({ tone: "warn", text: `La base usa ${(o.system.dbBytes / 1048576).toFixed(0)} MB (más del 70 % del plan gratuito).`, href: "/admin/sistema" });
   if (o.expiringSoon) alerts.push({ tone: "warn", text: `${o.expiringSoon} suscripción(es) vencen en los próximos 7 días.`, href: "/admin/complejos?estado=prueba" });
   if (o.expired) alerts.push({ tone: "warn", text: `${o.expired} complejo(s) con la suscripción vencida.`, href: "/admin/complejos?estado=vencido" });
+  const images = await withPlatformAdmin(user.id, (tx) => imageStorageUsage(tx));
+  if (images.level !== "ok") alerts.push({ tone: images.level === "critical" ? "error" : "warn", text: `Las imágenes ocupan ${(images.bytes / 1048576).toFixed(0)} MB (${images.pct} % del almacenamiento gratuito).`, href: "/admin/sistema" });
   if (o.system.emailProvider !== "resend") alerts.push({ tone: "info", text: "Los emails no están activos: los avisos solo se ven dentro de TURNUP.", href: "/admin/sistema" });
 
   const attention = tenants.filter((t) => {

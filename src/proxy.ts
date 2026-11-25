@@ -11,12 +11,19 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
+  // Origen del CDN de imágenes del catálogo (Supabase Storage público), si está configurado.
+  let imageOrigin = "";
+  try {
+    imageOrigin = process.env.IMAGE_PUBLIC_BASE_URL ? new URL(process.env.IMAGE_PUBLIC_BASE_URL).origin : "";
+  } catch {
+    imageOrigin = "";
+  }
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     // Teselas de OpenStreetMap para los mapas (solo imágenes; sin scripts de terceros).
-    "img-src 'self' data: blob: https://tile.openstreetmap.org",
+    `img-src 'self' data: blob: https://tile.openstreetmap.org${imageOrigin ? ` ${imageOrigin}` : ""}`,
     "font-src 'self'",
     `connect-src 'self'${isDev ? " ws:" : ""}`,
     "worker-src 'self'",

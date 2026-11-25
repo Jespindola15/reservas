@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
+import { EditPanel } from "@/components/EditPanel";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
@@ -12,7 +14,7 @@ import { archiveTenantAction, assignSubscriptionAction, changeOwnerAction, exten
 export const metadata: Metadata = { title: "Complejo · Superadministrador" };
 const ROLE: Record<string, string> = { OWNER: "Dueño", ADMIN: "Administrador", STAFF: "Personal" };
 const SUB: Record<string, string> = { TRIAL: "Prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
-const day = (d: Date) => d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+const day = (d: Date) => fmtDate(d);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default async function TenantAdminPage({ params }: { params: Promise<{ tenantId: string }> }) {
@@ -57,8 +59,7 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
               <dt>Cobro por transferencia</dt><dd>{t.depositType === "NONE" ? "No pide pago anticipado" : t.paymentSettings ? "Configurado" : "Pide seña pero no cargó datos (reservas online bloqueadas)"}</dd>
               <dt>En el catálogo</dt><dd>{t.publicListed && t.status === "ACTIVE" && !t.archivedAt ? "Sí" : "No"}</dd>
             </dl>
-            <details className={ui.details}>
-              <summary>Editar datos del complejo</summary>
+            <EditPanel label="Editar datos" title="Editar datos del complejo">
               <ActionForm action={updateTenantBasicsAction.bind(null, t.id)} submitLabel="Guardar datos" className={ui.stack}>
                 <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" defaultValue={t.name} minLength={2} maxLength={80} required /></label>
                 <label className={ui.field}><span className={ui.label}>Dirección</span><input className={ui.input} name="address" defaultValue={t.address ?? ""} maxLength={160} /></label>
@@ -72,7 +73,7 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
                 </div>
                 <p className={ui.hint} style={{ margin: 0 }}>La dirección web (/{t.slug}) no se cambia para no romper enlaces ya compartidos.</p>
               </ActionForm>
-            </details>
+            </EditPanel>
             <h3>Canchas</h3>
             {t.courts.length ? <ul style={{ paddingLeft: "1rem" }}>{t.courts.map((c) => <li key={c.id}>{c.name}{c.isActive ? "" : " (inactiva)"}</li>)}</ul> : <p className={ui.muted}>Sin canchas.</p>}
           </section>
@@ -84,10 +85,12 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
                 <li key={m.id}><Link href={`/admin/usuarios/${m.user.id}`}>{m.user.name}</Link> · {ROLE[m.role]}{m.isActive ? "" : " (inactivo)"}{m.user.isDisabled ? " · suspendido" : ""}<div className={ui.faint}>{m.user.email}</div></li>
               ))}
             </ul>
+            <EditPanel label="Cambiar dueño" title="Cambiar el dueño del complejo" description="Los dueños actuales quedan como administradores.">
             <ActionForm action={changeOwnerAction.bind(null, t.id)} submitLabel="Cambiar dueño" small className={ui.stack}
               confirm={{ title: "¿Cambiar el dueño?", body: "La persona indicada pasa a ser dueña. Los dueños actuales quedan como administradores.", confirmLabel: "Cambiar" }}>
               <label className={ui.field}><span className={ui.label}>Email del nuevo dueño (debe tener cuenta)</span><input className={ui.input} name="email" type="email" required maxLength={254} /></label>
             </ActionForm>
+            </EditPanel>
           </section>
         </div>
 
@@ -96,7 +99,8 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
           {t.subscriptions.length ? (
             <ul style={{ paddingLeft: "1rem" }}>{t.subscriptions.map((s) => <li key={s.id}>{s.plan.name} · {SUB[s.status] ?? s.status} · {day(s.currentPeriodStart)} al {day(s.currentPeriodEnd)}</li>)}</ul>
           ) : <p className={ui.muted}>Sin suscripción registrada.</p>}
-          <div className={ui.grid2}>
+          <div className={ui.row}>
+            <EditPanel label="Asignar plan o cambiar vencimiento" title="Plan y vencimiento" variant="primary">
             <ActionForm action={assignSubscriptionAction} submitLabel="Asignar plan / cambiar vencimiento" small className={ui.stack}>
               <input type="hidden" name="tenantId" value={t.id} />
               <label className={ui.field}><span className={ui.label}>Plan</span>
@@ -110,37 +114,41 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
                 <label className={ui.field}><span className={ui.label}>Vence</span><input className={ui.input} type="date" name="currentPeriodEnd" required /></label>
               </div>
             </ActionForm>
+            </EditPanel>
             {trial ? (
+              <EditPanel label="Extender prueba" title="Extender la prueba gratuita">
               <ActionForm action={extendTrialAction.bind(null, t.id)} submitLabel="Extender prueba" small className={ui.stack}>
                 <label className={ui.field}><span className={ui.label}>Días a sumar (hoy vence el {day(trial.currentPeriodEnd)})</span><input className={ui.input} type="number" name="days" min={1} max={90} required defaultValue={14} /></label>
               </ActionForm>
+              </EditPanel>
             ) : null}
           </div>
         </section>
 
         <section className={ui.card} aria-labelledby="estado">
           <h2 id="estado">Estado</h2>
-          <div className={ui.stack}>
+          <div className={ui.row}>
             {t.archivedAt ? (
               <ActionForm action={unarchiveTenantAction.bind(null, t.id)} submitLabel="Desarchivar" variant="secondary" />
             ) : t.status === "ACTIVE" ? (
+              <EditPanel label="Suspender complejo" title={`Suspender ${t.name}`} variant="danger" description="Se oculta del catálogo y no recibe reservas nuevas. Los datos se conservan.">
               <ActionForm action={setTenantStatusAction} submitLabel="Suspender complejo" variant="danger" className={ui.stack}
                 confirm={{ title: `¿Suspender ${t.name}?`, body: "Se oculta del catálogo, no recibe reservas nuevas y su panel queda inaccesible. Las reservas existentes y los datos se conservan.", confirmLabel: "Suspender" }}>
                 <input type="hidden" name="tenantId" value={t.id} /><input type="hidden" name="status" value="SUSPENDED" />
                 <label className={ui.field}><span className={ui.label}>Motivo (obligatorio, queda registrado)</span><input className={ui.input} name="reason" required minLength={5} maxLength={300} /></label>
               </ActionForm>
+              </EditPanel>
             ) : (
               <>
                 <ActionForm action={setTenantStatusAction} submitLabel="Reactivar complejo" confirm={{ title: "¿Reactivar?", body: "Vuelve al catálogo y acepta reservas.", confirmLabel: "Reactivar" }}>
                   <input type="hidden" name="tenantId" value={t.id} /><input type="hidden" name="status" value="ACTIVE" /><input type="hidden" name="reason" value="" />
                 </ActionForm>
-                <details>
-                  <summary style={{ cursor: "pointer", fontWeight: 700 }}>Archivar (dar de baja)</summary>
+                <EditPanel label="Archivar (dar de baja)" title="Archivar el complejo" variant="danger" description="Queda oculto en todos lados. No se borran reservas, pagos, fotos ni auditoría.">
                   <ActionForm action={archiveTenantAction.bind(null, t.id)} submitLabel="Archivar" variant="danger" className={ui.stack}
                     confirm={{ title: "¿Archivar el complejo?", body: "Queda oculto en todos lados. No se borran reservas, pagos, fotos ni auditoría.", confirmLabel: "Archivar" }}>
                     <label className={ui.field}><span className={ui.label}>Escribí el slug “{t.slug}” para confirmar</span><input className={ui.input} name="confirmSlug" required autoComplete="off" /></label>
                   </ActionForm>
-                </details>
+                </EditPanel>
               </>
             )}
           </div>

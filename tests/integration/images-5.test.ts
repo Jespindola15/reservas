@@ -27,7 +27,7 @@ beforeEach(async () => {
 afterEach(() => setObjectStoreForTests(undefined));
 afterAll(async () => { await prisma.$disconnect(); await owner.$disconnect(); });
 
-describe("migración de imágenes a almacenamiento de objetos (R2)", () => {
+describe("migración de imágenes a almacenamiento de objetos (Supabase Storage)", () => {
   it("simulación no escribe nada; ejecución copia, verifica y conserva los bytes; --free-db los vacía", async () => {
     const lines: string[] = [];
     await migrateImages({ execute: false, freeDb: false, log: (l) => lines.push(l) });
@@ -63,5 +63,17 @@ describe("migración de imágenes a almacenamiento de objetos (R2)", () => {
     const r = await migrateImages({ execute: false, freeDb: true, log: () => undefined });
     expect(r.failed).toHaveLength(2);
     expect((await owner.tenantAsset.findFirstOrThrow({ where: { tenantId: f.tenant.id } })).data).not.toBeNull();
+  });
+});
+
+describe("cupo de imágenes por complejo", () => {
+  it("no se puede superar la cantidad máxima de imágenes del complejo", async () => {
+    const { TENANT_IMAGE_MAX_COUNT } = await import("@/lib/storage/quota");
+    const { addTenantAsset } = await import("@/modules/tenant/branding");
+    const rows = Array.from({ length: TENANT_IMAGE_MAX_COUNT - 2 }, () => ({ tenantId: f.tenant.id, courtId: f.court.id, storage: "OBJECT" as const, objectKey: `tenants/${f.tenant.id}/courts/x/${crypto.randomUUID()}.webp`, contentType: "image/webp", sizeBytes: 1000 }));
+    await owner.courtImage.createMany({ data: rows });
+    const sharp = (await import("sharp")).default;
+    const png = new Uint8Array(await sharp({ create: { width: 800, height: 600, channels: 3, background: { r: 10, g: 200, b: 10 } } }).png().toBuffer());
+    await expect(addTenantAsset(f.ctx, "GALLERY", png, { type: "SYSTEM", userId: null })).rejects.toMatchObject({ code: "LIMIT_REACHED" });
   });
 });

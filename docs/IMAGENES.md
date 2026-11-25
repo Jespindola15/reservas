@@ -1,104 +1,122 @@
-# Imágenes en Cloudflare R2
+# Imágenes en Supabase Storage
 
-## Estado (25/11/2026)
+TURNUP usa **Supabase solo para guardar imágenes de los complejos**. La base sigue en Neon, el sitio en
+Netlify y el inicio de sesión en Better Auth. Supabase no ve usuarios, reservas ni pagos.
 
-| Tema | Estado |
+## Qué se guarda y cómo
+
+- **Solo imágenes comerciales:** logo, portada, galería y fotos de canchas. Los jugadores no suben fotos.
+- **Validación y procesamiento en el servidor**, antes de subir:
+  - Tipo real por contenido (no por la extensión) y tope de 4 MB por archivo.
+  - Orientación corregida, metadatos y GPS eliminados.
+  - Conversión a **WebP de ~100–200 KB**. Si no alcanza bajando la calidad, se achica la imagen, sin pasar de calidad 55 ni de 960 px.
+- **Cupo por complejo:** 60 imágenes y 25 MB en total, más los topes de cada tipo (8 de galería, 6 por cancha).
+- **Aislamiento:**
+  - Cada complejo tiene su carpeta (`tenants/<id-del-complejo>/...`).
+  - Subir y borrar pasa siempre por TURNUP, con el permiso del panel y el complejo del usuario.
+  - La clave de acceso nunca llega al navegador.
+- **Lectura pública:**
+  - El bucket `turnup-images` es público **solo para leer**, porque son fotos del catálogo.
+  - El navegador las baja del CDN de Supabase: no consume funciones de Netlify ni la base.
+  - Las URL llevan un id nuevo en cada subida y se guardan con **caché de un año**, con carga diferida (`loading="lazy"`).
+  - Cada visitante descarga cada imagen una sola vez.
+- **En Neon** solo queda la referencia: clave, tipo, tamaño y dimensiones. Nunca bytes ni Base64.
+- **En producción no hay respaldo silencioso:**
+  - Si Supabase no está configurado o falla, la subida se rechaza con un mensaje claro.
+  - La imagen anterior no se borra.
+- **Cambiar de proveedor** (R2, AWS S3, Backblaze, MinIO) es cambiar variables de entorno: el código habla el protocolo S3 estándar.
+
+## Plan gratuito de Supabase (sin tarjeta)
+
+| Límite | Valor |
 |---|---|
-| Código para guardar imágenes en R2 (subida, lectura, reemplazo, borrado) | **Implementado y probado** con un almacenamiento en memoria |
-| Producción sin R2 configurado | Con el código de la Fase 5, la subida de imágenes **falla con un mensaje claro**. Ya no hay respaldo silencioso a PostgreSQL. |
-| Migración de imágenes existentes | Script listo (`npm run images:migrate`). En producción hoy hay **0 imágenes** guardadas: medido el 25/11 a las 01:40 UTC. |
-| Fotos de jugadores | Eliminadas; nunca se suben a R2 |
-| Cuenta de Cloudflare, bucket y token | **Falta**: los creás vos con los pasos de abajo |
-| Prueba contra el R2 real | **Pendiente** hasta que exista el bucket. No se puede dar por terminada antes. |
+| Almacenamiento de archivos | 1 GB (unas 6.000 imágenes de ~170 KB) |
+| Transferencia | 5 GB/mes, más 5 GB/mes servidos desde caché |
+| Tamaño máximo por archivo | 50 MB (TURNUP usa como máximo 2 MB) |
+| Pausa por inactividad | El proyecto se pausa tras **1 semana sin actividad** |
 
-> **Orden obligatorio:** configurá R2 en Netlify **antes** de publicar la Fase 5. Si no, los complejos no van
-> a poder subir logos ni fotos: verían un error en lugar de que se guarden en la base.
+**Pausa:**
+- Mientras está pausado, las imágenes no se ven; el resto de TURNUP funciona igual.
+- El workflow `storage-keepalive.yml` hace una consulta mínima cada 3 días para evitarla. Es una mitigación, no una garantía de Supabase.
+- Si igual se pausa:
+  - *Superadmin → Sistema y alertas* lo indica.
+  - Se reactiva desde el panel de Supabase con **Restore project**. Los archivos no se pierden.
 
-## Qué hace el código
-
-- Cada imagen se valida por su contenido real (no por la extensión).
-- Se reprocesa:
-  - Orientación corregida.
-  - Metadatos y GPS eliminados.
-  - Máximo 1600 px y límite de píxeles.
-  - Conversión a WebP.
-- Se guarda **primero en R2** y recién después se crea la fila en PostgreSQL, con la clave, el tipo, el tamaño y las dimensiones.
-- Si R2 falla, no queda ninguna fila a medias y el usuario ve un error.
-- Las claves se separan por complejo: `tenants/<id-del-complejo>/...`.
-- El bucket es **privado**. Las imágenes se sirven a través de TURNUP, que comprueba que pertenezcan al complejo de la URL. Con eso, un complejo no puede pedir imágenes de otro.
-- Reemplazar una imagen borra la fila vieja y el objeto viejo.
-- Si borrar el objeto falla, queda un archivo huérfano en R2 (ocupa espacio), pero nunca se pierde una imagen en uso.
-- Las páginas cargan las imágenes con carga diferida y tamaño reservado (sin saltos).
-- Credenciales: solo como variables del servidor en Netlify. Nunca con prefijo `NEXT_PUBLIC_`, nunca en el repo.
-
-## ¿Cloudflare pide un medio de pago? ¿Cuánto es gratis?
-
-- Plan gratuito permanente, por mes:
-  - **10 GB-mes** de almacenamiento.
-  - **1 millón** de operaciones de escritura (clase A).
-  - **10 millones** de lecturas (clase B).
-  - Salida a Internet sin cargo.
-- Por encima de eso se cobra el uso (USD 0,015 por GB-mes, USD 4,50 por millón de escrituras, USD 0,36 por millón de lecturas).
-- Estimación: con WebP de ~150 KB, 10 GB son unas 60.000 imágenes. Un catálogo con decenas de complejos queda muy por debajo del límite.
-- **Medio de pago:** Cloudflare suele pedir que registres una tarjeta (o PayPal) la primera vez que activás R2, aunque te quedes en el plan gratuito.
-  Es una verificación, no un cobro. Si te lo pide, la decisión de cargarla es tuya: yo no lo hago.
-- Recomendación: después de activarlo, en *Manage Account → Billing → Notifications* configurá un aviso de facturación por si algún día hubiera un cargo.
+**Alertas de consumo:**
+- *Superadmin → Sistema y alertas* muestra los MB usados contra el cupo (`IMAGE_STORAGE_QUOTA_MB`, 1024 por defecto).
+- Avisa al 70 % y al 90 %.
+- La transferencia real la mide Supabase (Proyecto → *Usage*). Al acercarse al límite, Supabase avisa por email al dueño de la cuenta.
 
 ## Pasos que hacés vos (no pegues claves en el chat)
 
-1. **Cuenta:** entrá a https://dash.cloudflare.com/sign-up. Si ya tenés cuenta, iniciá sesión. Verificá el email.
-2. **Activar R2:** menú izquierdo → **R2 Object Storage** → *Overview*. Si pide medio de pago, ver arriba.
-3. **Bucket:** **Create bucket**.
+1. **Cuenta:**
+   - Entrá a https://supabase.com y hacé clic en **Start your project**.
+   - Registrate con GitHub o con email. No pide tarjeta para el plan gratuito.
+2. **Proyecto:**
+   - **New project**.
+   - Organización: la personal, con plan **Free**.
    - Nombre: `turnup-imagenes`.
-   - Ubicación: *Automatic*.
-   - Clase: *Standard* (el plan gratuito no cubre *Infrequent Access*).
-   - Dejá el **acceso público desactivado**: no actives *Public Development URL* (r2.dev) ni dominio propio.
-4. **Token de la aplicación:** R2 → *Overview* → **Manage API tokens** → **Create Account API token**. (Si no aparece "Account", usá **User API token**.)
-   - Nombre: `turnup-app`.
-   - Permisos: **Object Read & Write**.
-   - Alcance: **Apply to specific buckets only** → `turnup-imagenes`.
-   - TTL: sin vencimiento (o el que prefieras; anotá cuándo renovarlo).
-   - Al crear, copiá **Access Key ID**, **Secret Access Key** y el **endpoint S3** (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`). La clave secreta se muestra una sola vez.
-5. **Token de respaldo** (solo lectura): repetí el paso 4 con nombre `turnup-respaldo` y permiso **Object Read only** sobre el mismo bucket. Va a GitHub (docs/RESPALDOS.md), **no** a Netlify.
-6. **Netlify** → tu sitio → *Site configuration → Environment variables → Add a variable*. Marcá *Contains secret values* en las claves y el alcance *Functions* si lo permite:
+   - Contraseña de base: generala y guardala. No la vamos a usar, porque la base sigue en Neon.
+   - Región: **South America (São Paulo)**.
+   - **Create new project**, y esperá a que termine de crearse.
+3. **Bucket:**
+   - Menú izquierdo → **Storage** → **New bucket**.
+   - Nombre: `turnup-images`.
+   - Activá **Public bucket**: permite solo leer; subir y borrar sigue requiriendo la clave secreta.
+   - En *Additional configuration*:
+     - **Restrict file size**: `2 MB`.
+     - **Allowed MIME types**: `image/webp`.
+   - **Save**.
+4. **Acceso S3:**
+   - **Storage** → **S3 Configuration** (o *Settings → Storage*).
+   - Verificá que **S3 protocol connection** esté **activado**.
+   - Copiá el **Endpoint** (`https://<ref>.storage.supabase.co/storage/v1/s3`) y la **Region** (por ejemplo `sa-east-1`).
+5. **Claves para TURNUP:**
+   - En esa misma página → **New access key**.
+   - Descripción: `turnup-netlify`.
+   - Copiá el **Access key ID** y el **Secret access key**. El secreto se muestra una sola vez.
+   - Estas claves dan acceso total al almacenamiento: van solo a Netlify.
+6. **Claves para el respaldo:** creá otra con **New access key**, descripción `turnup-github-respaldo`. Van solo a GitHub (docs/RESPALDOS.md).
+7. **URL pública:**
+   - Es `https://<ref>.supabase.co/storage/v1/object/public/turnup-images`.
+   - `<ref>` es el identificador del proyecto: está en la URL del panel (`supabase.com/dashboard/project/<ref>`) y en el endpoint del paso 4.
+8. **Netlify:**
+   - Tu sitio → **Site configuration** → **Environment variables** → **Add a variable** → *Add a single variable*.
+   - Cargá cada una con alcance **Functions** y marcá **Contains secret values** en las dos claves:
 
-| Variable | Valor |
-|---|---|
-| `IMAGE_STORAGE` | `object` |
-| `S3_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
-| `S3_BUCKET` | `turnup-imagenes` |
-| `S3_REGION` | `auto` |
-| `S3_ACCESS_KEY_ID` | Access Key ID del token `turnup-app` |
-| `S3_SECRET_ACCESS_KEY` | Secret Access Key del token `turnup-app` |
+| Variable | Valor | Dónde sale |
+|---|---|---|
+| `IMAGE_STORAGE` | `object` | fijo |
+| `S3_ENDPOINT` | `https://<ref>.storage.supabase.co/storage/v1/s3` | paso 4 |
+| `S3_REGION` | p. ej. `sa-east-1` | paso 4 |
+| `S3_BUCKET` | `turnup-images` | paso 3 |
+| `S3_ACCESS_KEY_ID` | Access key ID de `turnup-netlify` | paso 5 |
+| `S3_SECRET_ACCESS_KEY` | Secret access key de `turnup-netlify` | paso 5 |
+| `IMAGE_PUBLIC_BASE_URL` | `https://<ref>.supabase.co/storage/v1/object/public/turnup-images` | paso 7 |
+| `IMAGE_STORAGE_QUOTA_MB` | `1024` | cupo del plan gratuito |
 
-No definas `ALLOW_DB_IMAGES` en Netlify: solo existe para desarrollo.
+Ninguna lleva prefijo `NEXT_PUBLIC_`. Si quedó de antes alguna variable de Cloudflare R2, borrala.
 
-7. Avisame cuando esté. Yo verifico, sin ver las claves:
+9. Avisame cuando esté. Sin ver las claves, verifico:
    - Una subida de prueba en un complejo de prueba.
-   - Que la fila tenga `storage=OBJECT`.
-   - Que la imagen se vea.
+   - Que la fila quede con `storage=OBJECT`.
+   - Que la imagen se vea desde el CDN.
    - El reemplazo y el borrado del objeto anterior.
-   - El aislamiento: la imagen de un complejo no se sirve con la URL de otro.
+   - El aislamiento entre complejos.
+   - *Superadmin → Sistema*.
 
 ## Migración de imágenes existentes (cuando haya)
 
+Hoy producción tiene 0 imágenes guardadas en la base. Si algún complejo sube imágenes antes de activar
+Supabase:
+
 ```bash
-npm run images:migrate                 # simulación: cuenta y mide; no escribe nada
-npm run images:migrate -- --execute    # sube, vuelve a descargar y compara SHA-256; recién entonces marca la fila
-npm run images:migrate -- --free-db    # SOLO con tu autorización: re-verifica cada objeto y vacía los bytes en la base
+npm run images:migrate                 # simulación
+npm run images:migrate -- --execute    # sube, descarga y compara SHA-256; recién entonces marca la fila
+npm run images:migrate -- --free-db    # SOLO con tu autorización: re-verifica y vacía los bytes en Neon
 ```
 
-- `--execute` no borra nada de PostgreSQL.
-- `--free-db` no vacía una fila si el objeto falta o no coincide; antes, respaldo verificado.
-- El script mide el tamaño de las tablas antes y después. El espacio vuelve al almacenamiento de Neon con
-  `VACUUM FULL tenant_assets, court_images;`, que bloquea esas dos tablas unos segundos.
-- Hoy la base de producción ocupa ~10 MB y no tiene imágenes: no hay nada que migrar todavía.
+## Respaldo
 
-## Recuperación
-
-Las imágenes de R2 entran en el respaldo semanal cifrado (docs/RESPALDOS.md), con el token de solo lectura.
-
-## Corrección de la Fase 5
-
-La regla de `court_images` usaba `{10,300}` y PostgreSQL admite como máximo 255 repeticiones. Habría hecho
-fallar toda foto de cancha en R2. Se corrigió en la migración `20261205000200`.
+El respaldo semanal de GitHub descarga el bucket con las claves `turnup-github-respaldo`, lo cifra y lo
+guarda con el de la base (docs/RESPALDOS.md).

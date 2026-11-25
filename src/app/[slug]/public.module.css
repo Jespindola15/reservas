@@ -134,3 +134,6 @@
   .slotTime { font-size: 0.95rem; }
 }
 @media (max-width: 360px) { .slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.transferScreen { display: flex; flex-direction: column; gap: var(--sp-3); }
+.transferScreen h1 { margin: 0; font-size: 1.5rem; }
+.transferScreen .dl { margin: 0; }

@@ -9,7 +9,7 @@ un respaldo lógico, cifrado y guardado fuera de Neon.
 | Qué | Cómo | Frecuencia | Retención |
 |---|---|---|---|
 | Base de datos completa | `pg_dump` (formato custom) cifrado con `age` | Semanal (lunes 04:17 AR) y a demanda | 30 días (artefacto privado de GitHub Actions) |
-| Imágenes en R2 | `aws s3 sync` del bucket → tar cifrado con `age` | Junto con la base | 30 días |
+| Imágenes en Supabase Storage | `aws s3 sync` del bucket (protocolo S3) → tar cifrado con `age` | Junto con la base | 30 días |
 | Antes de cada migración | Rama de respaldo de Neon + `pg_dump` manual | Cada migración | Hasta validar el deploy |
 | Historial de Neon | Restauración a un momento (PITR) del plan gratuito | Continuo | El que ofrezca el plan |
 
@@ -69,8 +69,16 @@ Repositorio → **Settings → Secrets and variables → Actions → New reposit
 - `BACKUP_DATABASE_URL`: `postgresql://turnup_backup:<contraseña>@<host-directo-de-neon>/turnup?sslmode=require`
   (el host **sin** `-pooler`).
 - `BACKUP_AGE_RECIPIENT`: la clave pública `age1...`.
-- Opcional, imágenes: `R2_BACKUP_ENDPOINT`, `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCESS_KEY_ID`,
-  `R2_BACKUP_SECRET_ACCESS_KEY` (token de R2 de **solo lectura**).
+- Imágenes (Supabase Storage):
+  - `STORAGE_BACKUP_ENDPOINT`: `https://<ref>.storage.supabase.co/storage/v1/s3`
+  - `STORAGE_BACKUP_REGION`: p. ej. `sa-east-1`
+  - `STORAGE_BACKUP_BUCKET`: `turnup-images`
+  - `STORAGE_BACKUP_ACCESS_KEY_ID` y `STORAGE_BACKUP_SECRET_ACCESS_KEY`: la clave `turnup-github-respaldo` (docs/IMAGENES.md, paso 6).
+
+  Supabase no ofrece claves S3 de solo lectura: estas claves pueden escribir. Por eso viven solo en
+  los secretos de GitHub (cifrados, invisibles en los registros) y el workflow solo ejecuta lecturas
+  (`sync` desde el bucket y `list-objects`). Con estos mismos secretos funciona `storage-keepalive.yml`,
+  que evita la pausa por inactividad del plan gratuito.
 
 ### 4. Primera ejecución
 
@@ -86,7 +94,9 @@ Actions → **Respaldo cifrado** → *Run workflow*. Debe terminar en verde con 
    - Al terminar, borrá la rama.
 3. Restauración real ante un desastre: crear una rama o proyecto **nuevo** en Neon, restaurar ahí con
    `pg_restore --no-owner --dbname=<nueva>`, verificar y recién entonces apuntar Netlify a esa base.
-4. Imágenes: `age -d -i turnup-backup-key.txt imagenes-XXXX.tar.age | tar -x` y `aws s3 sync images s3://<bucket>`.
+4. Imágenes: `age -d -i turnup-backup-key.txt imagenes-XXXX.tar.age | tar -x` y luego
+   `aws s3 sync images s3://turnup-images --endpoint-url <endpoint-de-supabase>` (con las claves S3 del proyecto destino).
+   Las claves de los objetos no cambian, así que las referencias en Neon siguen siendo válidas.
 
 ## Borrado accidental
 

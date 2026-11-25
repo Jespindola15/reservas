@@ -1,13 +1,25 @@
 import type { Metadata } from "next";
+import { fmtDateTime } from "@/lib/format";
 import { Icon } from "@/components/shell/icons";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { getEnv } from "@/lib/env";
 import { withPlatformAdmin } from "@/lib/db/tenant-context";
 import { platformOverview } from "@/modules/platform/billing";
+import { imageStorageReachable, imageStorageUsage } from "@/lib/storage/usage";
+
+/** Nombres legibles de las tareas programadas (el nombre técnico queda solo en los registros). */
+const JOB_LABEL: Record<string, string> = {
+  tick: "Tarea general (cada 30 min)",
+  expire_pending: "Vencimiento de reservas sin confirmar",
+  transfer_review_alerts: "Avisos de transferencias por revisar",
+  schedule_notifications: "Programación de recordatorios",
+  send_notifications: "Envío de emails",
+  cleanup: "Limpieza de datos temporales",
+};
 
 export const metadata: Metadata = { title: "Sistema y alertas" };
-const when = (d: Date | null) => (d ? d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hourCycle: "h23", dateStyle: "short", timeStyle: "short" }) : "nunca");
+const when = (d: Date | null) => (d ? fmtDateTime(d) : "nunca");
 
 /** Infraestructura, alertas y configuración de integraciones (solo lectura, sin secretos). */
 export default async function SystemPage() {
@@ -23,9 +35,18 @@ export default async function SystemPage() {
     return { pending, failed };
   });
   const pct = Math.round((o.system.dbBytes / o.system.dbLimitBytes) * 100);
+  const [images, reachable] = await Promise.all([withPlatformAdmin(user.id, (tx) => imageStorageUsage(tx)), imageStorageReachable()]);
   const config = [
     { name: "Emails (Resend)", ok: o.system.emailProvider === "resend", detail: o.system.emailProvider === "resend" ? "Configurado" : `Modo ${o.system.emailProvider}: no se envían emails; los avisos internos funcionan igual.` },
-    { name: "Imágenes en Cloudflare R2", ok: env.IMAGE_STORAGE === "object" && Boolean(env.S3_BUCKET), detail: env.IMAGE_STORAGE === "object" ? `Bucket ${env.S3_BUCKET || "(sin nombre)"}` : "Sin configurar: ver docs/IMAGENES.md" },
+    {
+      name: "Imágenes en Supabase Storage",
+      ok: env.IMAGE_STORAGE === "object" && Boolean(env.S3_BUCKET) && reachable !== false,
+      detail: env.IMAGE_STORAGE !== "object"
+        ? "Sin configurar: los complejos no pueden subir imágenes. Ver docs/IMAGENES.md"
+        : reachable === false
+          ? "No responde. Si el proyecto gratuito se pausó por inactividad, reactivalo desde el panel de Supabase (Restore project)."
+          : `Bucket ${env.S3_BUCKET}${env.IMAGE_PUBLIC_BASE_URL ? " · lectura pública por CDN" : " · servidas a través de TURNUP"}`,
+    },
     { name: "Secreto de tareas programadas", ok: Boolean(env.CRON_SECRET), detail: env.CRON_SECRET ? "Configurado" : "Falta CRON_SECRET" },
     { name: "Alertas por webhook", ok: Boolean(env.ALERT_WEBHOOK_URL), detail: env.ALERT_WEBHOOK_URL ? "Configurado" : "Opcional: sin configurar" },
     { name: "Respaldo semanal cifrado", ok: null, detail: "Se configura en GitHub Actions (docs/RESPALDOS.md); su estado se ve en la pestaña Actions del repositorio." },
@@ -39,6 +60,7 @@ export default async function SystemPage() {
         <div className={`${ui.statTile} ${pct >= 70 ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Base de datos (Neon)</span><span className={ui.statValue}>{(o.system.dbBytes / 1048576).toFixed(1)} MB</span><span className={ui.statHint}>{pct}% de {Math.round(o.system.dbLimitBytes / 1048576)} MB del plan gratuito</span></div>
         <div className={ui.statTile}><span className={ui.statLabel}>Emails en cola</span><span className={ui.statValue}>{queue.pending}</span><span className={ui.statHint}>{o.system.emailProvider === "resend" ? "Se envían en la próxima tarea" : "Sin proveedor: no se envían"}</span></div>
         <div className={`${ui.statTile} ${queue.failed ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Emails fallidos</span><span className={ui.statValue}>{queue.failed}</span></div>
+        <div className={`${ui.statTile} ${images.level !== "ok" ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Imágenes</span><span className={ui.statValue}>{(images.bytes / 1048576).toFixed(1)} MB</span><span className={ui.statHint}>{images.count} imágenes · {images.pct}% de {Math.round(images.quotaBytes / 1048576)} MB</span></div>
         <div className={ui.statTile}><span className={ui.statLabel}>Tareas programadas</span><span className={ui.statValue}>{o.system.jobs.filter((j) => !j.stale).length}/{o.system.jobs.length}</span><span className={ui.statHint}>al día</span></div>
       </section>
 
@@ -52,7 +74,7 @@ export default async function SystemPage() {
               <tbody>
                 {o.system.jobs.map((j) => (
                   <tr key={j.name}>
-                    <td data-label="Tarea"><code>{j.name}</code></td>
+                    <td data-label="Tarea">{JOB_LABEL[j.name] ?? j.name}</td>
                     <td data-label="Estado">{j.stale ? <span className={`${ui.badge} ${ui.badgeCANCELLED}`}>Atrasada</span> : <span className={`${ui.badge} ${ui.badgeCONFIRMED}`}>OK</span>}</td>
                     <td data-label="Último éxito">{when(j.lastSuccessAt)}</td>
                     <td data-label="Fallos seguidos">{j.consecutiveFailures}</td>
@@ -76,6 +98,11 @@ export default async function SystemPage() {
           ))}
         </ul>
       </section>
+      <p className={ui.faint}>
+        La transferencia de imágenes (egress) la mide Supabase: plan gratuito con 5 GB por mes más 5 GB servidos desde caché.
+        Las imágenes se guardan con caché de un año y se cargan de forma diferida, así que cada visitante descarga cada una una sola vez.
+        Para ver el consumo real: Supabase → tu proyecto → Usage.
+      </p>
       <p className={ui.faint}>Generado {when(now)}.</p>
     </div>
   );

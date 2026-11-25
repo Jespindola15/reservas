@@ -4,8 +4,9 @@
 # Requiere dos secretos del repositorio (Settings → Secrets and variables → Actions):
 #   BACKUP_DATABASE_URL   URL de un rol de SOLO LECTURA (nunca el dueño ni el de la app).
 #   BACKUP_AGE_RECIPIENT  Clave PÚBLICA age ("age1..."). La privada la guarda el dueño, fuera del repo.
-# Opcional (imágenes en Cloudflare R2, token de SOLO LECTURA): R2_BACKUP_ENDPOINT, R2_BACKUP_BUCKET,
-#   R2_BACKUP_ACCESS_KEY_ID, R2_BACKUP_SECRET_ACCESS_KEY. Si están, también se respaldan las imágenes.
+# Opcional (imágenes en Supabase Storage, protocolo S3): STORAGE_BACKUP_ENDPOINT, STORAGE_BACKUP_REGION,
+#   STORAGE_BACKUP_BUCKET, STORAGE_BACKUP_ACCESS_KEY_ID, STORAGE_BACKUP_SECRET_ACCESS_KEY.
+#   Si están, también se respaldan las imágenes (el job solo LEE el bucket).
 # Guía paso a paso: docs/RESPALDOS.md.
 # Sin esos secretos el job se saltea (no falla). Corre 1 vez por semana: despierta la base
 # unos segundos, no la mantiene activa. Uso de Actions: ~2 minutos por semana.
@@ -30,10 +31,14 @@ jobs:
     env:
       BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
-      R2_BACKUP_ENDPOINT: ${{ secrets.R2_BACKUP_ENDPOINT }}
-      R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+      STORAGE_BACKUP_ENDPOINT: ${{ secrets.STORAGE_BACKUP_ENDPOINT }}
+      STORAGE_BACKUP_BUCKET: ${{ secrets.STORAGE_BACKUP_BUCKET }}
+      AWS_DEFAULT_REGION: ${{ secrets.STORAGE_BACKUP_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_BACKUP_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_BACKUP_SECRET_ACCESS_KEY }}
+      # Compatibilidad con proveedores S3 no-AWS (sin sumas de verificación nuevas obligatorias).
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
     steps:
       - name: Verificar secretos
         id: check
@@ -58,10 +63,10 @@ jobs:
         # Sin la clave privada no se puede descifrar aquí (a propósito): se verifica la integridad
         # del archivo cifrado. La restauración completa se prueba con scripts/ops/restore-test.sh.
         run: cd backups && sha256sum --check --quiet ./*.age.sha256 && echo "Integridad OK" >> "$GITHUB_STEP_SUMMARY"
-      - name: Respaldo de imágenes (R2, opcional, cifrado)
-        if: steps.check.outputs.skip != 'true' && env.R2_BACKUP_BUCKET != ''
+      - name: Respaldo de imágenes (Supabase Storage, opcional, cifrado)
+        if: steps.check.outputs.skip != 'true' && env.STORAGE_BACKUP_BUCKET != ''
         run: |
-          aws s3 sync "s3://$R2_BACKUP_BUCKET" images --endpoint-url "$R2_BACKUP_ENDPOINT" --region auto --only-show-errors
+          aws s3 sync "s3://$STORAGE_BACKUP_BUCKET" images --endpoint-url "$STORAGE_BACKUP_ENDPOINT" --only-show-errors
           count=$(find images -type f | wc -l)
           tar -cf - images | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" --output "backups/imagenes-$(date -u +%Y%m%dT%H%M%SZ).tar.age"
           (cd backups && sha256sum imagenes-*.tar.age > imagenes.sha256)

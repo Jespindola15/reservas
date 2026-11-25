@@ -4,6 +4,7 @@ import { requireUserPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { authorizeTenantAccess, hasPermission } from "@/modules/access/authorize";
 import { panelBadges } from "@/modules/inbox/service";
+import { PanelLive } from "@/components/shell/PanelLive";
 import { SignOutButton } from "../SignOutButton";
 
 const ROLE = { OWNER: "Dueño", ADMIN: "Administrador", STAFF: "Personal" } as const;
@@ -89,6 +90,7 @@ export default async function PanelLayout({ children, params }: { children: Reac
       primaryAction={can("booking.manage") ? { href: `${b}/calendario?nueva=1`, label: "Nueva reserva" } : undefined}
       signOut={<SignOutButton compact />}
     >
+      <PanelLive slug={slug} initial={badges} />
       {children}
     </AppShell>
   );

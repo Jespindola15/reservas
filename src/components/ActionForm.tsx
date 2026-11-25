@@ -38,6 +38,8 @@ export function ActionForm(props: {
   const [idemKey, setIdemKey] = useState(props.idempotencyKey ?? "");
   useEffect(() => {
     if (!state?.ok) return;
+    // Aviso para contenedores (p. ej. EditPanel) que se cierran tras guardar.
+    formRef.current?.dispatchEvent(new CustomEvent("turnup:action-ok", { bubbles: true, detail: state.message }));
     if (props.resetOnSuccess) formRef.current?.reset();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- rotar la clave tras un éxito es intencional
     if (props.idempotencyKey) setIdemKey(crypto.randomUUID());

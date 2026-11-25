@@ -43,7 +43,7 @@ const schema = z
     EMAIL_FROM: z.string().max(200).default("TURNUP <no-reply@turnup.invalid>"),
     /** Webhook (Slack/Discord compatible) para alertas críticas. Opcional. */
     ALERT_WEBHOOK_URL: z.union([z.literal(""), z.url()]).default(""),
-    /** Almacenamiento de imágenes: database (actual) u object (S3/R2). */
+    /** Almacenamiento de imágenes: database (actual) u object (protocolo S3: Supabase Storage). */
     IMAGE_STORAGE: z.enum(["database", "object"]).default("database"),
     /** Solo desarrollo/pruebas: permite guardar imágenes nuevas en PostgreSQL en producción. Nunca en el sitio real. */
     ALLOW_DB_IMAGES: z.enum(["true", "false"]).default("false"),
@@ -51,6 +51,10 @@ const schema = z
     S3_BUCKET: z.string().default(""),
     S3_REGION: z.string().default("auto"),
     S3_ACCESS_KEY_ID: z.string().default(""),
+    /** Base pública de lectura de las imágenes del catálogo, p. ej. https://<ref>.supabase.co/storage/v1/object/public/turnup-images */
+    IMAGE_PUBLIC_BASE_URL: z.union([z.literal(""), z.url()]).default(""),
+    /** Cupo de almacenamiento del proveedor (MB) para las alertas de consumo. Supabase gratuito: 1024. */
+    IMAGE_STORAGE_QUOTA_MB: z.coerce.number().int().min(10).max(1_000_000).default(1024),
     S3_SECRET_ACCESS_KEY: z.string().default(""),
     /** Solo para probar el build de producción en la máquina local (http://localhost). */
     ALLOW_INSECURE_LOCALHOST: z.enum(["true", "false"]).default("false"),

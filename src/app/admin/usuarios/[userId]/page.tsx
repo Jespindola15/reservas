@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { fmtDateTime } from "@/lib/format";
+import { actionLabel } from "@/lib/audit-labels";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
+import { EditPanel } from "@/components/EditPanel";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
@@ -10,7 +13,7 @@ import { anonymizeUserAction, passwordRecoveryAction, reactivateUserAction, rena
 
 export const metadata: Metadata = { title: "Usuario · Superadministrador" };
 const ROLE: Record<string, string> = { OWNER: "Dueño", ADMIN: "Administrador", STAFF: "Personal" };
-const when = (d: Date) => d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hourCycle: "h23", dateStyle: "short", timeStyle: "short" });
+const when = (d: Date) => fmtDateTime(d);
 
 export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = await params;
@@ -44,9 +47,11 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
               <dt>Jugador</dt><dd>{u.playerProfile ? `Sí · ${d.bookingsTotal} reservas (${d.bookingsFuture} futuras)` : "No"}</dd>
             </dl>
             {!u.anonymizedAt ? (
-              <ActionForm action={renameUserAction.bind(null, u.id)} submitLabel="Guardar nombre" small className={ui.row}>
-                <input className={ui.input} name="name" defaultValue={u.name} minLength={2} maxLength={80} required aria-label="Nombre" style={{ maxWidth: 260 }} />
-              </ActionForm>
+              <EditPanel label="Editar nombre" title="Editar nombre del usuario" description="El email no se cambia desde acá: lo confirma la propia persona.">
+                <ActionForm action={renameUserAction.bind(null, u.id)} submitLabel="Guardar nombre" className={ui.stack}>
+                  <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" defaultValue={u.name} minLength={2} maxLength={80} required /></label>
+                </ActionForm>
+              </EditPanel>
             ) : null}
           </section>
 
@@ -61,7 +66,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
             )}
             <h3>Actividad reciente</h3>
             {d.activity.length === 0 ? <p className={ui.muted}>Sin registros.</p> : (
-              <ul className={ui.faint} style={{ paddingLeft: "1rem" }}>{d.activity.map((a) => <li key={a.id}>{when(a.createdAt)} · {a.action}</li>)}</ul>
+              <ul className={ui.faint} style={{ paddingLeft: "1rem" }}>{d.activity.map((a) => <li key={a.id}>{when(a.createdAt)} · {actionLabel(a.action)}</li>)}</ul>
             )}
           </section>
         </div>
@@ -73,19 +78,20 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
               {u.isDisabled ? (
                 <ActionForm action={reactivateUserAction.bind(null, u.id)} submitLabel="Reactivar usuario" confirm={{ title: "¿Reactivar?", body: "Podrá volver a ingresar.", confirmLabel: "Reactivar" }} />
               ) : (
+                <EditPanel label="Suspender usuario" title={`Suspender a ${u.name}`} variant="danger" description="No podrá ingresar y se cierran sus sesiones. Sus datos se conservan.">
                 <ActionForm action={suspendUserAction.bind(null, u.id)} submitLabel="Suspender usuario" variant="danger" className={ui.stack}
                   confirm={{ title: `¿Suspender a ${u.name}?`, body: "No podrá ingresar y se cerrarán todas sus sesiones ahora mismo. Sus datos se conservan.", confirmLabel: "Suspender" }}>
                   <label className={ui.field}><span className={ui.label}>Motivo (queda registrado)</span><input className={ui.input} name="reason" required minLength={5} maxLength={300} /></label>
                 </ActionForm>
+                </EditPanel>
               )}
               <div className={ui.row}>
                 <ActionForm action={revokeSessionsAction.bind(null, u.id)} submitLabel="Cerrar todas sus sesiones" variant="secondary" small />
                 {!u.isDisabled ? <ActionForm action={passwordRecoveryAction.bind(null, u.id)} submitLabel="Enviar recuperación de contraseña" variant="secondary" small /> : null}
               </div>
               {impact ? (
-                <details>
-                  <summary style={{ cursor: "pointer", fontWeight: 700 }}>Eliminar cuenta (anonimizar)</summary>
-                  <div className={ui.stack} style={{ marginTop: "0.75rem" }}>
+                <EditPanel label="Eliminar cuenta (anonimizar)" title="Eliminar cuenta" variant="danger">
+                  <div className={ui.stack}>
                     <p className={ui.muted} style={{ margin: 0 }}>
                       Se borran nombre, email, contraseña, 2FA, sesiones, perfil de jugador, {impact.favorites} favorito(s) y {impact.memberships} acceso(s) a complejos.
                       Se conservan, desvinculadas, {impact.pastBookings} reserva(s) pasadas y sus pagos (historial de los complejos) y {impact.reviews} opinión(es) quedan como “Usuario eliminado”. No se puede deshacer.
@@ -101,7 +107,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                       </ActionForm>
                     )}
                   </div>
-                </details>
+                </EditPanel>
               ) : null}
             </div>
           </section>

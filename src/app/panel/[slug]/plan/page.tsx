@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
@@ -8,7 +9,7 @@ import { formatMoney } from "@/modules/booking/pricing";
 export const metadata: Metadata = { title: "Plan y suscripción" };
 
 const STATUS: Record<string, string> = { TRIAL: "Período de prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (en período de gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
-const day = (d: Date) => d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "long", year: "numeric" });
+const day = (d: Date) => fmtDate(d);
 
 export default async function PlanPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

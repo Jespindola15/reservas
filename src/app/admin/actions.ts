@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { fmtDate } from "@/lib/format";
 import { z } from "zod";
 import { runAction, type ActionResult } from "@/lib/actions";
 import { requireSuperadmin } from "@/lib/auth/dal";
@@ -113,7 +114,7 @@ export async function recordSubscriptionPaymentAction(_p: ActionResult, fd: Form
     });
     revalidatePath("/admin");
     return res.extendedTo
-      ? `Pago registrado. Suscripción activa hasta el ${res.extendedTo.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}.`
+      ? `Pago registrado. Suscripción activa hasta el ${fmtDate(res.extendedTo)}.`
       : res.subscriptionId
         ? "Pago registrado."
         : "Pago registrado (el complejo no tiene una suscripción vigente: asignale un plan).";
@@ -231,7 +232,7 @@ export async function extendTrialAction(tenantId: string, _p: ActionResult, fd: 
     const { extendTrial } = await import("@/modules/platform/tenants");
     const end = await extendTrial(user, tenantId, Number(fd.get("days") ?? 0));
     revalidatePath("/admin", "layout");
-    return `Prueba extendida hasta el ${end.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}.`;
+    return `Prueba extendida hasta el ${fmtDate(end)}.`;
   });
 }
 

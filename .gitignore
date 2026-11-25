@@ -54,3 +54,4 @@ next-env.d.ts
 
 # Capturas de auditoría visual (se entregan aparte, no se versionan)
 /capturas
+_to_delete/

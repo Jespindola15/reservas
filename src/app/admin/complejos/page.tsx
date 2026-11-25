@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import Link from "next/link";
 import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { ActionForm } from "@/components/ActionForm";
+import { EditPanel } from "@/components/EditPanel";
 import { listTenantsAdmin } from "@/modules/platform/tenants";
 import { listTenantsForPlatform } from "@/modules/platform/service";
 import { assignAdminAction, createTenantAction } from "../actions";
 
 export const metadata: Metadata = { title: "Complejos · Superadministrador" };
 const SUB: Record<string, string> = { TRIAL: "Prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
-const day = (d: Date) => d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+const day = (d: Date) => fmtDate(d);
 
 export default async function TenantsAdminPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await requireSuperadminPage("/admin/complejos");
@@ -22,7 +24,34 @@ export default async function TenantsAdminPage({ searchParams }: { searchParams:
   return (
     <>
       <div className={ui.stack}>
-        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Plataforma</p><h1>Complejos</h1></div><a className={ui.button} href="#nuevo">Nuevo complejo</a></header>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Plataforma</p><h1>Complejos</h1></div>
+          <div className={ui.row}>
+            <EditPanel label="Asignar administrador" title="Asignar administrador a un complejo" description="Si el email no tiene cuenta, se crea con la contraseña inicial indicada.">
+              <ActionForm action={assignAdminAction} submitLabel="Asignar" className={ui.stack}>
+              <label className={ui.field}><span className={ui.label}>Complejo</span>
+                <select className={ui.select} name="tenantId" required>
+                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} /></label>
+              <label className={ui.field}><span className={ui.label}>Email</span><input className={ui.input} name="email" type="email" required /></label>
+              <label className={ui.field}><span className={ui.label}>Rol</span>
+                <select className={ui.select} name="role" defaultValue="OWNER">
+                  <option value="OWNER">Dueño</option><option value="ADMIN">Administrador</option><option value="STAFF">Personal</option>
+                </select>
+              </label>
+              <label className={ui.field}><span className={ui.label}>Contraseña inicial (solo usuarios nuevos, mín. 12)</span><input className={ui.input} name="initialPassword" type="password" minLength={12} autoComplete="new-password" /></label>
+            </ActionForm>
+            </EditPanel>
+            <EditPanel label="Nuevo complejo" title="Nuevo complejo" variant="primary" hash="nuevo" description="Después podés asignarle dueño, plan y datos de contacto.">
+              <ActionForm action={createTenantAction} submitLabel="Crear complejo" className={ui.stack}>
+              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} maxLength={100} /></label>
+              <label className={ui.field}><span className={ui.label}>Slug (URL)</span><input className={ui.input} name="slug" required pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]" placeholder="padel-centro" /></label>
+              <label className={ui.field}><span className={ui.label}>Zona horaria</span><input className={ui.input} name="timezone" defaultValue="America/Argentina/Buenos_Aires" /></label>
+            </ActionForm>
+            </EditPanel>
+          </div>
+        </header>
         <FilterBar label="Buscar complejos" search={{ name: "q", placeholder: "Nombre, slug o ciudad", defaultValue: data.q }} active={data.estado !== "todos" || Boolean(sp.orden && sp.orden !== "recientes")} clearHref="/admin/complejos">
           <label className={ui.field}><span className={ui.label}>Estado</span>
             <select className={ui.select} name="estado" defaultValue={data.estado}>
@@ -68,37 +97,6 @@ export default async function TenantsAdminPage({ searchParams }: { searchParams:
             {data.page < data.pages ? <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={href(data.page + 1)}>Siguiente</Link> : null}
           </nav>
         ) : null}
-        <section aria-labelledby="alta" className={ui.section}>
-          <h2 id="alta">Alta de complejos y accesos</h2>
-        <div className={ui.grid2}>
-          <section className={ui.card} aria-labelledby="nuevo">
-            <h2 id="nuevo">Nuevo complejo</h2>
-            <ActionForm action={createTenantAction} submitLabel="Crear complejo" className={ui.stack}>
-              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} maxLength={100} /></label>
-              <label className={ui.field}><span className={ui.label}>Slug (URL)</span><input className={ui.input} name="slug" required pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]" placeholder="padel-centro" /></label>
-              <label className={ui.field}><span className={ui.label}>Zona horaria</span><input className={ui.input} name="timezone" defaultValue="America/Argentina/Buenos_Aires" /></label>
-            </ActionForm>
-          </section>
-          <section className={ui.card} aria-labelledby="asignar">
-            <h2 id="asignar">Asignar administrador</h2>
-            <ActionForm action={assignAdminAction} submitLabel="Asignar" className={ui.stack}>
-              <label className={ui.field}><span className={ui.label}>Complejo</span>
-                <select className={ui.select} name="tenantId" required>
-                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </label>
-              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} /></label>
-              <label className={ui.field}><span className={ui.label}>Email</span><input className={ui.input} name="email" type="email" required /></label>
-              <label className={ui.field}><span className={ui.label}>Rol</span>
-                <select className={ui.select} name="role" defaultValue="OWNER">
-                  <option value="OWNER">Dueño</option><option value="ADMIN">Administrador</option><option value="STAFF">Personal</option>
-                </select>
-              </label>
-              <label className={ui.field}><span className={ui.label}>Contraseña inicial (solo usuarios nuevos, mín. 12)</span><input className={ui.input} name="initialPassword" type="password" minLength={12} autoComplete="new-password" /></label>
-            </ActionForm>
-          </section>
-        </div>
-        </section>
       </div>
     </>
   );

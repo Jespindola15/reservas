@@ -20,6 +20,31 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Ingresar" }).click();
 }
 
+/**
+ * Captura de página completa SIN el efecto de Playwright que pinta encabezados y barras fijas en mitad
+ * de la imagen (lo comprobamos con capturas de pantalla reales: en el navegador quedan arriba y abajo).
+ * Para la imagen completa, las barras fijas pasan a su lugar natural (arriba/abajo del documento).
+ */
+async function fullShot(page: Page, path: string) {
+  const y = await page.evaluate(() => {
+    const prev = window.scrollY;
+    for (const el of document.querySelectorAll("body *")) {
+      const pos = getComputedStyle(el).position;
+      if ((pos === "fixed" || pos === "sticky") && !(el as HTMLElement).closest("dialog")) {
+        (el as HTMLElement).dataset.capturaPos = (el as HTMLElement).style.position;
+        (el as HTMLElement).style.position = "relative";
+      }
+    }
+    return prev;
+  });
+  await page.screenshot({ path, fullPage: true });
+  // Se restaura la página tal como estaba (el recorrido sigue usándola).
+  await page.evaluate((prev) => {
+    for (const el of document.querySelectorAll<HTMLElement>("[data-captura-pos]")) { el.style.position = el.dataset.capturaPos ?? ""; delete el.dataset.capturaPos; }
+    window.scrollTo(0, prev);
+  }, y);
+}
+
 async function audit(page: Page, name: string, path: string, group = "general") {
   const problems: string[] = [];
   for (const [w, h] of SIZES) {
@@ -38,7 +63,46 @@ async function audit(page: Page, name: string, path: string, group = "general") 
       return `${doc.scrollWidth}px > ${window.innerWidth}px · ${culprit ? `${culprit.tagName.toLowerCase()}.${String(culprit.className).slice(0, 60)}` : "?"}`;
     });
     if (overflow) problems.push(`${name} @${w}: ${overflow}`);
-    if (w !== 320) await page.screenshot({ path: `${OUT}/${group}/${w}x${h}/${name}.png`, fullPage: true });
+    // Textos técnicos sin traducir (eventos tipo booking.transfer.reported o constantes TRANSFER_REPORTED).
+    if (w === 1440) {
+      const tech = await page.evaluate(() => {
+        const text = document.querySelector("main")?.innerText ?? "";
+        // Prefijos de eventos de auditoría y constantes de estado; los alias bancarios (p. ej. "club.padel.mp") no cuentan.
+        const found = text.match(/\b(booking|transfer|payment|court|block|schedule|tenant|team|review|platform|inbox|notification|job|user)\.[a-z_]+(\.[a-z_]+)*\b|\b[A-Z]{3,}_[A-Z_]{3,}\b/g) ?? [];
+        return [...new Set(found)].slice(0, 5);
+      });
+      if (tech.length) problems.push(`${name}: texto técnico visible: ${tech.join(", ")}`);
+    }
+    // Barras fijas (encabezado, navegación inferior, botón flotante): al llegar al final de la página,
+    // ningún control del contenido puede quedar tapado. Se comprueba con elementFromPoint.
+    const covered = await page.evaluate(async () => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await new Promise((r) => setTimeout(r, 150));
+      const out: string[] = [];
+      const els = [...document.querySelectorAll("main a, main button, main input, main select, main textarea, main summary")] as HTMLElement[];
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        // Solo la mitad inferior: lo que queda debajo del encabezado al desplazarse es normal; lo que
+        // importa es que el final de la página no quede bajo la barra inferior o el botón flotante.
+        if (r.width < 4 || r.height < 4 || r.top < window.innerHeight / 2 || r.top >= window.innerHeight) continue;
+        if (!el.checkVisibility?.()) continue;
+        if (getComputedStyle(el).visibility === "hidden" || el.closest("[aria-hidden=true]")) continue;
+        const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
+        const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
+        const hit = document.elementFromPoint(x, y);
+        if (hit && !el.contains(hit) && !hit.contains(el)) {
+          const blocker = hit.closest("nav, header, [role=dialog], a, button") ?? hit;
+          const fixedAncestor = (() => { for (let n: Element | null = hit; n; n = n.parentElement) { const pos = getComputedStyle(n).position; if (pos === "fixed" || pos === "sticky") return n; } return null; })();
+          if (fixedAncestor && !fixedAncestor.contains(el)) {
+            out.push(`${el.tagName.toLowerCase()} "${(el.textContent || el.getAttribute("aria-label") || el.getAttribute("name") || "").trim().slice(0, 30)}" tapado por ${blocker.tagName.toLowerCase()}.${String(blocker.className).slice(0, 40)}`);
+          }
+        }
+      }
+      return out.slice(0, 3);
+    });
+    if (w < 768 && covered.length) problems.push(`${name} @${w}: ${covered.join(" | ")}`);
+    if (w < 768) await page.screenshot({ path: `${OUT}/${group}/${w}x${h}/${name}--final.png` });
+    if (w !== 320) await fullShot(page, `${OUT}/${group}/${w}x${h}/${name}.png`);
   }
   return problems;
 }
@@ -50,7 +114,8 @@ test.setTimeout(600_000);
 async function shot(page: Page, name: string) {
   const v = page.viewportSize()!;
   await page.waitForTimeout(300);
-  await page.screenshot({ path: `${OUT}/flujo/${v.width}x${v.height}/${name}.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/flujo/${v.width}x${v.height}/${name}--pantalla.png` });
+  await fullShot(page, `${OUT}/flujo/${v.width}x${v.height}/${name}.png`);
 }
 
 /**
@@ -103,7 +168,7 @@ test("flujo completo de reserva con transferencia (capturas)", async ({ browser 
     await player.getByLabel("Número de operación (opcional)").fill(w === 390 ? "120045" : "120046");
     await player.getByRole("button", { name: "Ya realicé la transferencia" }).click();
     await player.getByRole("button", { name: "Sí, ya transferí" }).click();
-    await expect(player.getByText(/avisamos al complejo/)).toBeVisible();
+    await expect(player.getByText(/Informaste la transferencia\. El complejo la está verificando/)).toBeVisible();
     await shot(player, "06-transferencia-informada");
     await player.goto("/mis-turnos");
     await shot(player, "07-mis-turnos-pendiente");

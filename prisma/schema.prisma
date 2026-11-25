@@ -690,7 +690,7 @@ model CourtImage {
   storage     ImageStorage @default(DATABASE)
   /// Bytes en la base (storage = DATABASE). Null si está en almacenamiento de objetos.
   data        Bytes?
-  /// Clave en el bucket S3/R2 (storage = OBJECT).
+  /// Clave en el bucket de imágenes (Supabase Storage, protocolo S3) (storage = OBJECT).
   objectKey   String?      @map("object_key")
   width       Int?
   height      Int?

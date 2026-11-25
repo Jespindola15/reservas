@@ -5,7 +5,7 @@ import { getObjectStore } from "@/lib/storage/images";
 /**
  * (Lógica del script scripts/migrate-images-to-object.ts; acá para poder probarla.)
  * Migra imágenes de COMPLEJOS (logo, portada, galería) y de CANCHAS guardadas en PostgreSQL al
- * almacenamiento de objetos (Cloudflare R2 u otro compatible con S3).
+ * almacenamiento de objetos (Supabase Storage u otro compatible con S3).
  *
  *   npm run images:migrate                      -> SIMULACIÓN: cuenta, mide y lista; no escribe nada.
  *   npm run images:migrate -- --execute         -> sube cada imagen, la descarga y compara SHA-256,

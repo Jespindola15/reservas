@@ -19,14 +19,22 @@ function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
 }
 
-/** Cuenta regresiva hasta `deadline`; devuelve el texto "mm:ss" o "h h mm min". */
-export function useCountdown(deadline: string | null) {
-  const [now, setNow] = useState(() => Date.now());
+/**
+ * Cuenta regresiva hasta `deadline` (fecha guardada en el servidor, no se reinicia al recargar).
+ * `serverNow` corrige un reloj del celular adelantado o atrasado: se calcula la diferencia con la
+ * hora del servidor una sola vez y se aplica en cada segundo.
+ */
+export function useCountdown(deadline: string | null, serverNow?: string) {
+  const [skew] = useState(() => (serverNow ? new Date(serverNow).getTime() - Date.now() : 0));
+  const [now, setNow] = useState(() => Date.now() + skew);
   useEffect(() => {
     if (!deadline) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [deadline]);
+    const tick = () => setNow(Date.now() + skew);
+    const id = window.setInterval(tick, 1000);
+    // Al volver a la pestaña (el navegador pausa los timers en segundo plano) se recalcula al instante.
+    document.addEventListener("visibilitychange", tick);
+    return () => { window.clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [deadline, skew]);
   if (!deadline) return { left: null as number | null, label: "" };
   const left = Math.max(0, new Date(deadline).getTime() - now);
   const totalMin = Math.floor(left / 60_000);
@@ -76,8 +84,10 @@ export function TransferPanel(props: {
   deadline: string | null;
   reported: boolean;
   timezone: string;
+  /** Hora del servidor al generar la página (ISO), para que el contador no dependa del reloj del celular. */
+  serverNow?: string;
 }) {
-  const { left, label } = useCountdown(props.deadline);
+  const { left, label } = useCountdown(props.deadline, props.serverNow);
   const timeFmt = new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const expired = left !== null && left <= 0;
   return (
@@ -103,11 +113,9 @@ export function TransferPanel(props: {
       <CopyRow label="Importe a transferir" value={formatMoney(props.amountDue, props.currency)} copyValue={String(Math.round(props.amountDue / 100))} />
       {props.transfer.alias ? <CopyRow label="Alias" value={props.transfer.alias} /> : null}
       {props.transfer.cbuCvu ? <CopyRow label="CBU / CVU" value={props.transfer.cbuCvu} /> : null}
+      {props.transfer.holderName ? <CopyRow label="Titular de la cuenta" value={props.transfer.holderName} /> : null}
       <CopyRow label="Código de reserva (ponelo en el concepto)" value={props.code} />
-      <dl className={styles.dl}>
-        {props.transfer.holderName ? (<><dt>Titular</dt><dd>{props.transfer.holderName}</dd></>) : null}
-        {props.transfer.bankName ? (<><dt>Banco / billetera</dt><dd>{props.transfer.bankName}</dd></>) : null}
-      </dl>
+      {props.transfer.bankName ? <p className={ui.faint} style={{ margin: 0 }}>Banco o billetera: {props.transfer.bankName}</p> : null}
       {props.transfer.instructions ? <p className={styles.instructions}>{props.transfer.instructions}</p> : null}
       <p className={ui.faint}>
         La transferencia va directo a la cuenta del complejo. TURNUP no recibe ni retiene dinero; cualquier devolución la gestiona el complejo.

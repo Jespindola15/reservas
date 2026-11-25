@@ -248,12 +248,18 @@ test("login con contraseña incorrecta muestra mensaje genérico", async ({ page
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("el dueño no accede al panel de otro complejo ni al superadmin", async ({ page }) => {
+test("el dueño no accede al panel de otro complejo ni al superadmin", async ({ page, request }) => {
   await login(page, "duenio@padel-centro.example.com", OWNER_PW);
   await page.waitForURL("**/panel/padel-centro");
   expect((await page.goto("/panel/futbol-norte"))?.status()).toBe(404);
   expect((await page.goto("/panel/futbol-norte/clientes"))?.status()).toBe(404);
   expect((await page.goto("/admin"))?.status()).toBe(404);
+  // Contadores en vivo del panel: propios sí, de otro complejo no, sin sesión tampoco.
+  const own = await page.request.get("/api/panel/padel-centro/avisos");
+  expect(own.status()).toBe(200);
+  expect(Object.keys(await own.json()).sort()).toEqual(["incidents", "transfers", "unread"]);
+  expect([403, 404]).toContain((await page.request.get("/api/panel/futbol-norte/avisos")).status());
+  expect((await request.get("/api/panel/padel-centro/avisos")).status()).toBe(401);
 });
 
 test("cookies de sesión httpOnly y cabeceras de seguridad", async ({ page, context }) => {
@@ -353,12 +359,18 @@ test("personal no puede exportar ni gestionar el equipo", async ({ page }) => {
 test("superadmin: planes y auditoría con filtros", async ({ page }) => {
   await loginSuperadmin(page);
   await page.goto("/admin/planes");
-  await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Nombre").fill("Plan E2E");
-  await page.getByRole("region", { name: "Nuevo plan" }).getByLabel("Código").fill(`e2e-${Date.now() % 100000}`);
-  await page.getByRole("button", { name: "Crear plan" }).click();
-  await expect(page.getByText("Plan creado.")).toBeVisible();
+  // Los formularios ocasionales del superadmin viven en paneles modales.
+  await page.getByRole("button", { name: "Nuevo plan" }).click();
+  const nuevo = page.getByRole("dialog", { name: "Nuevo plan" });
+  await nuevo.getByLabel("Nombre").fill("Plan E2E");
+  await nuevo.getByLabel("Código").fill(`e2e-${Date.now() % 100000}`);
+  await nuevo.getByRole("button", { name: "Crear plan" }).click();
+  await expect(nuevo).toBeHidden();
+  await expect(page.getByText("Plan creado.").filter({ visible: true })).toBeVisible();
   await page.goto("/admin/auditoria?action=platform.plan");
-  await expect(page.getByText("platform.plan.created").first()).toBeVisible();
+  await expect(page.getByText("Plan creado", { exact: true }).first()).toBeVisible();
+  // Los nombres técnicos de los eventos nunca se muestran en la interfaz.
+  await expect(page.getByText("platform.plan.created")).toHaveCount(0);
 });
 
 test("PWA: manifest, service worker sin caché del navegador y página offline", async ({ request, page }) => {
@@ -422,7 +434,7 @@ test("dueño: turno fijo semanal con revisión de fechas y pago registrado a man
   await expect(page.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/5491144445555\?text=/);
   await page.getByLabel("Importe ($)").fill("5000");
   await page.getByRole("button", { name: "Registrar" }).click();
-  await expect(page.getByText(/Pago registrado/)).toBeVisible();
+  await expect(page.getByText("Pago registrado.")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Seña · Efectivo")).toBeVisible();
 });
@@ -540,13 +552,14 @@ test("superadmin: métricas comerciales, estado del sistema y pago de suscripci�
   await expect(page.getByRole("heading", { name: "Tareas programadas" })).toBeVisible();
   await expect(page.getByText(/MB del plan gratuito/)).toBeVisible();
   await page.goto("/admin/planes");
-  const form = page.getByRole("region", { name: "Registrar pago de suscripción" });
+  await page.getByRole("button", { name: "Registrar pago" }).click();
+  const form = page.getByRole("dialog", { name: "Registrar pago de suscripción" });
   await form.getByLabel("Complejo").selectOption({ label: "Pádel Centro" });
   await form.getByLabel("Importe ($)").fill("25000");
   await form.getByLabel("Período desde").fill("2099-01-01");
   await form.getByLabel("Período hasta").fill("2099-01-31");
   await form.getByRole("button", { name: "Registrar pago" }).click();
-  await expect(page.getByText(/Pago registrado\. Suscripción activa hasta el/)).toBeVisible();
+  await expect(page.getByText(/Pago registrado\. Suscripción activa hasta el/).filter({ visible: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Últimos pagos registrados" })).toContainText("Pádel Centro");
 });
 
@@ -694,6 +707,10 @@ test("transferencia: el dueño configura cobros, el jugador reserva e informa, e
   await expect(page.getByText("Datos de cobro guardados.")).toBeVisible();
   await expect(page.getByText("Vista previa para el jugador")).toBeVisible();
   await expect(page.getByText("deportivo.sur").first()).toBeVisible();
+  // El panel queda abierto en "Hoy": debe enterarse solo de la transferencia informada.
+  await page.clock.install();
+  await page.goto("/panel/complejo-deportivo-sur");
+  await expect(page.getByText(/transferencias? por verificar/)).toHaveCount(0);
 
   const player = await browser.newPage();
   await player.goto("/complejo-deportivo-sur");
@@ -715,8 +732,11 @@ test("transferencia: el dueño configura cobros, el jugador reserva e informa, e
   await player.getByLabel("Número de operación (opcional)").fill("998877");
   await player.getByRole("button", { name: "Ya realicé la transferencia" }).click();
   await player.getByRole("button", { name: "Sí, ya transferí" }).click();
-  await expect(player.getByText(/avisamos al complejo/)).toBeVisible();
+  await expect(player.getByText(/Informaste la transferencia\. El complejo la está verificando/)).toBeVisible();
   await player.close();
+  // Sin recargar: el sondeo liviano (cada minuto, pestaña visible) detecta el cambio.
+  await page.clock.runFor(61_000);
+  await expect(page.getByText("1 transferencia por verificar.")).toBeVisible({ timeout: 15_000 });
 
   await page.goto("/panel/complejo-deportivo-sur/transferencias");
   const card = page.getByRole("listitem").filter({ hasText: code });
@@ -746,10 +766,12 @@ test("superadmin suspende a un jugador: su sesión deja de funcionar al instante
   await loginSuperadmin(page);
   await page.goto(`/admin/usuarios?q=${encodeURIComponent(email)}`);
   await page.getByRole("link", { name: "Pepe Suspendible" }).click();
-  await page.getByLabel("Motivo (queda registrado)").fill("Prueba automatizada de suspensión");
   await page.getByRole("button", { name: "Suspender usuario" }).click();
+  const susp = page.getByRole("dialog", { name: "Suspender a Pepe Suspendible" });
+  await susp.getByLabel("Motivo (queda registrado)").fill("Prueba automatizada de suspensión");
+  await susp.getByRole("button", { name: "Suspender usuario" }).click();
   await page.getByRole("button", { name: "Suspender", exact: true }).click();
-  await expect(page.getByText(/Usuario suspendido/)).toBeVisible();
+  await expect(page.getByText(/Suspendido el .*Prueba automatizada de suspensión/)).toBeVisible();
   // Las contraseñas y sesiones nunca se muestran.
   await expect(page.getByText(/clave-jugador-123/)).toHaveCount(0);
 

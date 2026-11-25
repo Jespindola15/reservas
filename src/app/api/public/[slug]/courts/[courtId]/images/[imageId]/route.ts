@@ -19,6 +19,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     const ctx = await publicTenantContext(slug);
     const img = await getCourtImage(ctx, courtId, imageId);
     if (!img) throw new AppError("NOT_FOUND");
+    if ("redirect" in img) {
+      // Imagen en el CDN del proveedor: redirección cacheable (la URL de destino nunca cambia de contenido).
+      return new Response(null, { status: 301, headers: { Location: img.redirect, "Cache-Control": "public, max-age=31536000, immutable" } });
+    }
     return new Response(new Uint8Array(img.data), {
       headers: {
         "Content-Type": img.contentType,

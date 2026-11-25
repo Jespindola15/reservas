@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import { ActionForm } from "@/components/ActionForm";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
@@ -21,7 +22,7 @@ export default async function ModerationPage() {
               <li key={r.id} className={ui.card}>
                 <div className={ui.spread}>
                   <strong>{r.tenant.name}</strong>
-                  <span className={ui.faint}>Denuncia de {r.reporterKind === "COMPLEX" ? "el complejo" : "un jugador"} · {r.createdAt.toLocaleDateString("es-AR")}</span>
+                  <span className={ui.faint}>Denuncia de {r.reporterKind === "COMPLEX" ? "el complejo" : "un jugador"} · {fmtDate(r.createdAt)}</span>
                 </div>
                 <p><strong>Motivo:</strong> {r.reason}</p>
                 <blockquote className={ui.card} style={{ margin: "0.5rem 0" }}>

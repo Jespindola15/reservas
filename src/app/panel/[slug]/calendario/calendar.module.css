@@ -101,3 +101,21 @@
 .filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin-bottom: var(--sp-3); }
 .filters select { max-width: 200px; }
 @media (max-width: 1023px) { .moveBar { bottom: calc(var(--bottomnav-h) + 1rem + env(safe-area-inset-bottom)); } }
+
+/* Agenda móvil: una cancha a la vez */
+.courtTabs { display: flex; gap: var(--sp-2); overflow-x: auto; padding-bottom: 2px; scroll-snap-type: x proximity; }
+.courtTab, .courtTabActive { flex: none; scroll-snap-align: start; display: flex; flex-direction: column; gap: 2px; min-height: 52px; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-lg); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); text-decoration: none; }
+.courtTab span, .courtTabActive span { font-size: var(--fs-xs); color: var(--text-muted); white-space: nowrap; }
+.courtTabActive { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
+.courtTabActive strong { color: var(--lime); }
+.hourGrid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--sp-2); }
+.hourCell { display: flex; flex-direction: column; gap: 2px; min-height: 58px; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md, 10px); border: 1px solid var(--border); text-decoration: none; color: var(--text); }
+.hourTime { font-weight: 800; font-variant-numeric: tabular-nums; }
+.hourWho { font-size: var(--fs-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hourFree { border-style: dashed; border-color: rgb(160 248 2 / 45%); }
+.hourFree .hourWho { color: var(--lime); }
+.hourFree:hover { background: var(--lime-soft); }
+.hourBusy { background: var(--surface-2); }
+.hourBusy .hourWho { color: var(--text); font-weight: 600; }
+.hourBlocked { opacity: 0.7; background: repeating-linear-gradient(135deg, transparent 0 6px, rgb(255 255 255 / 4%) 6px 12px); }
+.hourPast { opacity: 0.4; }

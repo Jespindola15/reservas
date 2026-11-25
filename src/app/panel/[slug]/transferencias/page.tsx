@@ -11,6 +11,7 @@ import { formatMoney } from "@/modules/booking/pricing";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
 import { INCIDENT_KINDS, INCIDENT_LABEL, listTransferQueue, readTransferSnapshot, RESOLUTIONS, RESOLUTION_LABEL } from "@/modules/payments/transfers";
 import { confirmTransferAction, openIncidentAction, rejectTransferAction, resolveIncidentAction, transferNoteAction } from "./actions";
+import { STATUS_LABEL } from "../labels";
 import styles from "./transfers.module.css";
 
 export const metadata: Metadata = { title: "Transferencias por verificar" };
@@ -95,29 +96,38 @@ export default async function TransfersPage({ params, searchParams }: { params: 
               const pending = b.status === "PENDING";
               return (
                 <li key={b.id} className={`${ui.card} ${styles.item}`}>
-                  <div className={styles.head}>
-                    <div>
-                      <strong className={styles.code}>{b.code}</strong>
-                      <span className={ui.muted}> · {b.court.name} · {formatLocalDateTime(b.startsAt, tz)} a {formatLocalTime(b.endsAt, tz)}</span>
+                  {/* Resumen compacto: jugador, cancha, horario, importe y estado. El resto, plegado. */}
+                  <div className={styles.summary}>
+                    <div className={styles.summaryMain}>
+                      <strong>{b.customerName}</strong>
+                      <span className={ui.muted}>{b.court.name} · {formatLocalDateTime(b.startsAt, tz)}</span>
                     </div>
-                    <span className={`${ui.badge} ${b.paymentStatus === "VERIFIED" ? ui.badgeCONFIRMED : b.paymentStatus === "TRANSFER_REPORTED" ? styles.badgeReported : ui.badgePENDING}`}>
-                      {b.paymentStatus === "VERIFIED" ? "Pago verificado" : b.paymentStatus === "TRANSFER_REPORTED" ? "Transferencia informada" : b.status === "PENDING" ? "Esperando transferencia" : b.status}
-                    </span>
+                    <div className={styles.summarySide}>
+                      <strong className={styles.amount}>{formatMoney(b.amountDue, b.currency)}</strong>
+                      <span className={`${ui.badge} ${b.paymentStatus === "VERIFIED" ? ui.badgeCONFIRMED : b.paymentStatus === "TRANSFER_REPORTED" ? styles.badgeReported : ui.badgePENDING}`}>
+                        {b.paymentStatus === "VERIFIED" ? "Pago verificado" : b.paymentStatus === "TRANSFER_REPORTED" ? "Informada" : b.status === "PENDING" ? "Esperando" : STATUS_LABEL[b.status] ?? b.status}
+                      </span>
+                    </div>
                   </div>
-                  <dl className={styles.dl}>
-                    <dt>Jugador</dt><dd>{b.customerName} · {b.customerPhone}</dd>
-                    <dt>Titular que transfiere</dt><dd>{b.transferPayerName ?? <span className={ui.faint}>El mismo jugador</span>}</dd>
-                    <dt>A transferir</dt><dd><strong>{formatMoney(b.amountDue, b.currency)}</strong> <span className={ui.faint}>de {formatMoney(b.priceAmount, b.currency)}{balance ? ` · saldo ${formatMoney(balance, b.currency)}` : ""}</span></dd>
-                    <dt>Informada</dt><dd>{b.transferReportedAt ? formatLocalDateTime(b.transferReportedAt, tz) : <span className={ui.faint}>Todavía no</span>}</dd>
-                    <dt>N.º de operación</dt><dd>{b.transferReference ?? <span className={ui.faint}>No informado</span>}</dd>
-                    {(() => {
-                      const snap = readTransferSnapshot(b.transferSnapshot);
-                      return snap ? (<><dt>Cuenta mostrada</dt><dd>{[snap.alias, snap.cbuCvu, snap.holderName].filter(Boolean).join(" · ")}</dd></>) : null;
-                    })()}
-                    {b.paymentReceivedAmount !== null ? (<><dt>Recibido</dt><dd>{formatMoney(b.paymentReceivedAmount, b.currency)}{b.paymentReference ? ` · ref. ${b.paymentReference}` : ""}</dd></>) : null}
-                    {pending ? (<><dt>{b.paymentStatus === "TRANSFER_REPORTED" ? "Tiempo para revisar" : "Tiempo para transferir"}</dt><dd className={left === "vencido" ? ui.textDanger : undefined}>{left ?? "Sin límite"}</dd></>) : null}
-                    {b.paymentVerifiedAt ? (<><dt>Verificado</dt><dd>{formatLocalDateTime(b.paymentVerifiedAt, tz)}</dd></>) : null}
-                  </dl>
+                  {pending && left ? <p className={left === "vencido" ? `${ui.faint} ${ui.textDanger}` : ui.faint} style={{ margin: 0 }}>{b.paymentStatus === "TRANSFER_REPORTED" ? "Tiempo para revisar" : "Tiempo para transferir"}: {left}</p> : null}
+                  <details className={styles.more}>
+                    <summary>Más datos · {b.code}</summary>
+                    <dl className={styles.dl}>
+                      <dt>Código</dt><dd className={styles.code}>{b.code}</dd>
+                      <dt>Turno</dt><dd>{formatLocalDateTime(b.startsAt, tz)} a {formatLocalTime(b.endsAt, tz)}</dd>
+                      <dt>Teléfono</dt><dd>{b.customerPhone ?? "—"}</dd>
+                      <dt>Titular que transfiere</dt><dd>{b.transferPayerName ?? <span className={ui.faint}>El mismo jugador</span>}</dd>
+                      <dt>Precio del turno</dt><dd>{formatMoney(b.priceAmount, b.currency)}{balance ? <span className={ui.faint}> · saldo {formatMoney(balance, b.currency)} en el complejo</span> : null}</dd>
+                      <dt>Informada</dt><dd>{b.transferReportedAt ? formatLocalDateTime(b.transferReportedAt, tz) : <span className={ui.faint}>Todavía no</span>}</dd>
+                      <dt>N.º de operación</dt><dd>{b.transferReference ?? <span className={ui.faint}>No informado</span>}</dd>
+                      {(() => {
+                        const snap = readTransferSnapshot(b.transferSnapshot);
+                        return snap ? (<><dt>Cuenta mostrada</dt><dd>{[snap.alias, snap.cbuCvu, snap.holderName].filter(Boolean).join(" · ")}</dd></>) : null;
+                      })()}
+                      {b.paymentReceivedAmount !== null ? (<><dt>Recibido</dt><dd>{formatMoney(b.paymentReceivedAmount, b.currency)}{b.paymentReference ? ` · ref. ${b.paymentReference}` : ""}</dd></>) : null}
+                      {b.paymentVerifiedAt ? (<><dt>Verificado</dt><dd>{formatLocalDateTime(b.paymentVerifiedAt, tz)}</dd></>) : null}
+                    </dl>
+                  </details>
                   <div className={styles.actions}>
                     {pending && canVerify ? (
                       <>
@@ -152,6 +162,9 @@ export default async function TransfersPage({ params, searchParams }: { params: 
                       </>
                     ) : null}
                     {wa ? <a className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`} href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a> : null}
+                    <details className={styles.action}>
+                      <summary className={`${ui.button} ${ui.buttonSmall} ${ui.buttonGhost}`}>Más acciones</summary>
+                      <div className={styles.actions}>
                     <Link className={`${ui.button} ${ui.buttonSmall} ${ui.buttonGhost}`} href={`/panel/${slug}/reservas/${b.id}`}>Ver reserva</Link>
                     <details className={styles.action}>
                       <summary className={`${ui.button} ${ui.buttonSmall} ${ui.buttonGhost}`}>Nota interna</summary>
@@ -174,6 +187,8 @@ export default async function TransfersPage({ params, searchParams }: { params: 
                         </ActionForm>
                       </details>
                     ) : null}
+                      </div>
+                    </details>
                   </div>
                 </li>
               );

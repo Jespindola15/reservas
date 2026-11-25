@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import { MapPin, MessageCircle, Phone } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
@@ -228,7 +229,7 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
                   <li key={r.id} className={ui.card}>
                     <div className={ui.spread}>
                       <strong aria-label={`${r.rating} de 5 estrellas`}>{"★".repeat(r.rating)}<span className={ui.faint}>{"★".repeat(5 - r.rating)}</span></strong>
-                      <span className={ui.faint}>{r.author} · {r.createdAt.toLocaleDateString("es-AR", { timeZone: tenant.timezone })}</span>
+                      <span className={ui.faint}>{r.author} · {fmtDate(r.createdAt, tenant.timezone)}</span>
                     </div>
                     {r.comment ? <p style={{ margin: "0.4rem 0 0" }}>{r.comment}</p> : null}
                     {r.reply ? <p className={styles.reply}><strong>Respuesta del complejo:</strong> {r.reply}</p> : null}

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import sharp from "sharp";
 import { z } from "zod";
 import { audit, type Actor } from "@/lib/audit";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
-import { deleteObjectQuietly, getObjectStore, uploadStore } from "@/lib/storage/images";
+import { deleteObjectQuietly, encodeWithinBudget, getObjectStore, publicObjectUrl, uploadStore } from "@/lib/storage/images";
+import { assertTenantImageQuota } from "@/lib/storage/quota";
 import { parseOrThrow } from "@/lib/validation";
 import { sniffImageType } from "@/modules/courts/service";
 import { AR_PROVINCES } from "@/lib/geo";
@@ -109,17 +109,15 @@ export const MAX_GALLERY = 8;
 export const MAX_ASSET_UPLOAD_BYTES = 4 * 1024 * 1024;
 const MAX_STORED_BYTES = 2_000_000; // = CHECK tenant_assets_size
 
-/** Recorte y optimización por tipo: el logo es cuadrado, la portada apaisada. */
+/** Recorte y optimización por tipo (WebP de ~100–200 KB): el logo es cuadrado, la portada apaisada. */
 export async function processAsset(kind: AssetKind, input: Uint8Array) {
-  const base = sharp(input, { limitInputPixels: 40_000_000, failOn: "error" }).rotate();
-  const pipeline =
-    kind === "LOGO"
-      ? base.resize({ width: 512, height: 512, fit: "cover", position: "attention" })
-      : kind === "COVER"
-        ? base.resize({ width: 1600, height: 600, fit: "cover", position: "attention", withoutEnlargement: false })
-        : base.resize({ width: 1600, height: 1200, fit: "inside", withoutEnlargement: true });
-  const { data, info } = await pipeline.webp({ quality: kind === "LOGO" ? 85 : 78 }).toBuffer({ resolveWithObject: true });
-  return { data, contentType: "image/webp" as const, width: info.width, height: info.height };
+  if (kind === "LOGO") {
+    return encodeWithinBudget(input, (s, w) => s.resize({ width: w, height: w, fit: "cover", position: "attention" }), { maxWidth: 512, startQuality: 85, target: 120 * 1024 });
+  }
+  if (kind === "COVER") {
+    return encodeWithinBudget(input, (s, w) => s.resize({ width: w, height: Math.round((w * 3) / 8), fit: "cover", position: "attention" }), { maxWidth: 1600, startQuality: 78 });
+  }
+  return encodeWithinBudget(input, (s, w) => s.resize({ width: w, height: Math.round(w * 0.75), fit: "inside", withoutEnlargement: true }), { maxWidth: 1600, startQuality: 78 });
 }
 
 export async function addTenantAsset(ctx: TenantContext, kind: AssetKind, bytes: Uint8Array, actor: Actor) {
@@ -137,6 +135,11 @@ export async function addTenantAsset(ctx: TenantContext, kind: AssetKind, bytes:
     const n = await withTenant(ctx, (tx) => tx.tenantAsset.count({ where: { tenantId: ctx.tenantId, kind } }));
     if (n >= MAX_GALLERY) throw new AppError("LIMIT_REACHED", { resource: "gallery", max: MAX_GALLERY });
   }
+  // Cupo por complejo (cantidad y peso), validado antes de subir al proveedor.
+  await withTenant(ctx, async (tx) => {
+    const replacing = kind === "GALLERY" ? { count: 0, bytes: 0 } : await tx.tenantAsset.aggregate({ where: { tenantId: ctx.tenantId, kind }, _count: { _all: true }, _sum: { sizeBytes: true } }).then((r) => ({ count: r._count._all, bytes: r._sum.sizeBytes ?? 0 }));
+    await assertTenantImageQuota(tx, ctx.tenantId, img.data.length, replacing);
+  });
   const store = uploadStore();
   const objectKey = store ? `tenants/${ctx.tenantId}/brand/${kind.toLowerCase()}/${randomUUID()}.webp` : null;
   if (store && objectKey) await store.put(objectKey, img.data, img.contentType);
@@ -190,13 +193,16 @@ export async function deleteTenantAsset(ctx: TenantContext, assetId: string, act
   if (key) await deleteObjectQuietly(key);
 }
 
-export async function getTenantAsset(ctx: TenantContext, assetId: string): Promise<{ contentType: string; data: Uint8Array } | null> {
+export async function getTenantAsset(ctx: TenantContext, assetId: string): Promise<{ contentType: string; data: Uint8Array } | { redirect: string } | null> {
   parseOrThrow(z.uuid(), assetId);
   const a = await withTenant(ctx, (tx) =>
     tx.tenantAsset.findFirst({ where: { id: assetId, tenantId: ctx.tenantId }, select: { contentType: true, data: true, objectKey: true } }),
   );
   if (!a) return null;
   if (a.data) return { contentType: a.contentType, data: a.data };
+  // Imagen comercial pública: el navegador la baja directo del CDN del proveedor.
+  const direct = a.objectKey ? publicObjectUrl(a.objectKey) : null;
+  if (direct) return { redirect: direct };
   if (a.objectKey) {
     const obj = await getObjectStore()?.get(a.objectKey);
     return obj ? { contentType: a.contentType, data: obj.data } : null;

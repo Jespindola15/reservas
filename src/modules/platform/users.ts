@@ -66,7 +66,7 @@ export async function listUsers(user: AuthUser, f: { q?: string; tipo?: string; 
         skip: (page - 1) * PAGE,
         take: PAGE,
         select: {
-          id: true, name: true, email: true, platformRole: true, isDisabled: true, suspendedAt: true, anonymizedAt: true, createdAt: true,
+          id: true, name: true, email: true, platformRole: true, isDisabled: true, suspendedAt: true, suspendedReason: true, anonymizedAt: true, createdAt: true,
           twoFactorEnabled: true,
           playerProfile: { select: { userId: true } },
           memberships: { where: { isActive: true }, select: { role: true, tenant: { select: { slug: true, name: true } } } },

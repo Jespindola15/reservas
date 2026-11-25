@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { fmtTime, fmtWeekdayDate } from "@/lib/format";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
 import { SPORT_LABEL } from "@/components/player/ComplexCard";
@@ -7,6 +8,7 @@ import styles from "@/components/player/player.module.css";
 import ui from "@/components/ui.module.css";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { formatMoney } from "@/modules/booking/pricing";
+import { PendingBanner } from "@/components/transfer/PendingBanner";
 import { TransferPanel, type TransferData } from "@/components/transfer/TransferPanel";
 import { listPlayerBookings, playerTransferInfos, type PlayerBooking } from "@/modules/player/bookings";
 import { STATUS_LABEL } from "../panel/[slug]/labels";
@@ -15,13 +17,12 @@ import { cancelMyBookingAction, claimBookingAction, reportMyTransferAction, revi
 export const metadata: Metadata = { title: "Mis turnos — TURNUP" };
 
 function when(b: PlayerBooking) {
-  const o = { timeZone: b.tenantTimezone } as const;
-  return `${b.startsAt.toLocaleDateString("es-AR", { ...o, weekday: "long", day: "numeric", month: "long" })} · ${b.startsAt.toLocaleTimeString("es-AR", { ...o, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} hs`;
+  return `${fmtWeekdayDate(b.startsAt, b.tenantTimezone)} · ${fmtTime(b.startsAt, b.tenantTimezone)} hs`;
 }
 
 const PAY_LABEL: Record<string, string> = { AWAITING_TRANSFER: "Pendiente de transferencia", TRANSFER_REPORTED: "Transferencia informada" };
 
-function Turn({ b, transfer }: { b: PlayerBooking; transfer?: TransferData | null }) {
+function Turn({ b, transfer, serverNow }: { b: PlayerBooking; transfer?: TransferData | null; serverNow?: string }) {
   const payLabel = b.status === "PENDING" && b.paymentStatus ? PAY_LABEL[b.paymentStatus] : undefined;
   return (
     <li className={styles.turn}>
@@ -35,13 +36,19 @@ function Turn({ b, transfer }: { b: PlayerBooking; transfer?: TransferData | nul
         <span className={`${ui.badge} ${ui[`badge${b.status}` as keyof typeof ui] ?? ""}`}>{payLabel ?? STATUS_LABEL[b.status as keyof typeof STATUS_LABEL] ?? b.status}</span>
       </div>
       <div className={styles.meta}>Código <strong>{b.code}</strong>{b.status === "CONFIRMED" && b.paymentStatus === "VERIFIED" ? " · Pago verificado por el complejo" : ""}</div>
+      {b.status === "EXPIRED" && b.paymentStatus === "TRANSFER_REPORTED" ? (
+        <p className={`${ui.alert} ${ui.alertWarn}`} style={{ margin: 0 }}>
+          El complejo no llegó a verificar tu transferencia a tiempo y el turno se liberó. Si transferiste, comunicate con el complejo
+          (<Link href={`/${b.tenantSlug}`}>ver contacto</Link>) con el código {b.code}: puede reprogramarte o devolverte el importe. TURNUP no maneja el dinero.
+        </p>
+      ) : null}
       {b.status === "PENDING" && b.amountDue && (b.paymentStatus === "AWAITING_TRANSFER" || b.paymentStatus === "TRANSFER_REPORTED") ? (
         <details open={b.paymentStatus === "AWAITING_TRANSFER"}>
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>{b.paymentStatus === "AWAITING_TRANSFER" ? "Datos para transferir" : "Estado de la transferencia"}</summary>
           <div className={ui.stack} style={{ marginTop: "0.75rem" }}>
             {transfer || b.paymentStatus === "TRANSFER_REPORTED" ? (
               <TransferPanel transfer={transfer ?? { alias: null, cbuCvu: null, holderName: null, bankName: null, instructions: null }} amountDue={b.amountDue} currency={b.currency} code={b.code}
-                deadline={b.expiresAt ? b.expiresAt.toISOString() : null} reported={b.paymentStatus === "TRANSFER_REPORTED"} timezone={b.tenantTimezone} />
+                deadline={b.expiresAt ? b.expiresAt.toISOString() : null} reported={b.paymentStatus === "TRANSFER_REPORTED"} timezone={b.tenantTimezone} serverNow={serverNow} />
             ) : <p className={`${ui.alert} ${ui.alertWarn}`}>El complejo no tiene datos de cobro cargados. Comunicate con el complejo.</p>}
             {b.paymentStatus === "AWAITING_TRANSFER" ? (
               <ActionForm action={reportMyTransferAction.bind(null, b.id)} submitLabel="Ya realicé la transferencia" className={ui.stack}
@@ -94,6 +101,7 @@ export default async function MyBookings() {
     return (
       <PlayerShell user={null}>
         <h1 className={styles.hello}>Mis turnos</h1>
+        <PendingBanner />
         <div className={styles.empty}>
           <p>Ingresá para ver tus reservas en todos los complejos.</p>
           <div className={ui.row} style={{ justifyContent: "center" }}>
@@ -123,13 +131,13 @@ export default async function MyBookings() {
         <section className={styles.section} aria-labelledby="transferir">
           <div className={styles.sectionHead}><h2 id="transferir">Pendientes de transferencia</h2></div>
           <p className={ui.faint}>Tu turno todavía no está confirmado. Realizá la transferencia e informá el pago para que el complejo pueda verificarlo.</p>
-          <ul className={styles.turns}>{awaiting.map((b) => <Turn key={b.id} b={b} transfer={b.transfer ?? transfers.get(b.tenantId) ?? null} />)}</ul>
+          <ul className={styles.turns}>{awaiting.map((b) => <Turn key={b.id} b={b} transfer={b.transfer ?? transfers.get(b.tenantId) ?? null} serverNow={now.toISOString()} />)}</ul>
         </section>
       ) : null}
       {reviewing.length ? (
         <section className={styles.section} aria-labelledby="verificando">
           <div className={styles.sectionHead}><h2 id="verificando">Pendientes de verificación</h2></div>
-          <ul className={styles.turns}>{reviewing.map((b) => <Turn key={b.id} b={b} transfer={b.transfer} />)}</ul>
+          <ul className={styles.turns}>{reviewing.map((b) => <Turn key={b.id} b={b} transfer={b.transfer} serverNow={now.toISOString()} />)}</ul>
         </section>
       ) : null}
       <section className={styles.section} aria-labelledby="proximos">

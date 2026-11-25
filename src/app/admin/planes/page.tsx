@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { fmtDate } from "@/lib/format";
 import { ActionForm } from "@/components/ActionForm";
+import { EditPanel } from "@/components/EditPanel";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listPlans } from "@/modules/platform/plans";
@@ -8,7 +10,7 @@ import { formatMoney } from "@/modules/booking/pricing";
 import { listSubscriptionPayments } from "@/modules/platform/billing";
 import { assignSubscriptionAction, recordSubscriptionPaymentAction, savePlanAction } from "../actions";
 
-const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "—");
+const day = (d: Date | null | undefined) => (d ? fmtDate(d) : "—");
 
 export const metadata: Metadata = { title: "Planes y suscripciones" };
 
@@ -40,36 +42,8 @@ export default async function PlansPage() {
   const today = now.toISOString().slice(0, 10);
   const nextMonth = new Date(now.getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
 
-  return (
-    <>
-      <div className={ui.stack}>
-        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Comercial</p><h1>Planes y suscripciones</h1></div></header>
-        <p className={`${ui.alert} ${ui.alertInfo}`}>Los planes definen límites. No hay cobro automático: la suscripción es un registro administrativo.</p>
-        {plans.length === 0 ? <p className={ui.muted}>Todavía no hay planes. Creá el primero abajo.</p> : null}
-        <div className={ui.grid2}>
-          {plans.map((p) => (
-            <section key={p.id} className={ui.card} aria-label={`Plan ${p.name}`}>
-              <div className={ui.cardHeader}>
-                <h2>{p.name}</h2>
-                <span className={ui.muted}>{p._count.subscriptions} suscripciones{p.isActive ? "" : " · inactivo"}</span>
-              </div>
-              <ActionForm action={savePlanAction.bind(null, p.id)} submitLabel="Guardar" className={ui.stack} variant="secondary">
-                <PlanFields plan={p} />
-              </ActionForm>
-            </section>
-          ))}
-          <section className={ui.card} aria-labelledby="nuevo-plan">
-            <div className={ui.cardHeader}><h2 id="nuevo-plan">Nuevo plan</h2></div>
-            <ActionForm action={savePlanAction.bind(null, null)} submitLabel="Crear plan" className={ui.stack} resetOnSuccess>
-              <PlanFields />
-            </ActionForm>
-          </section>
-        </div>
-
-        <section className={ui.card} aria-labelledby="asignar-plan">
-          <div className={ui.cardHeader}><h2 id="asignar-plan">Asignar plan a un complejo</h2></div>
-          {plans.some((p) => p.isActive) && tenants.length ? (
-            <ActionForm action={assignSubscriptionAction} submitLabel="Asignar plan" className={ui.stack}>
+  const assignForm = (
+    <ActionForm action={assignSubscriptionAction} submitLabel="Asignar plan" className={ui.stack}>
               <div className={ui.grid2}>
                 <label className={ui.field}><span className={ui.label}>Complejo</span>
                   <select className={ui.select} name="tenantId" required>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name} (/{t.slug})</option>)}</select>
@@ -88,13 +62,9 @@ export default async function PlansPage() {
               </div>
               <p className={ui.hint}>La suscripción viva anterior pasa a “cancelada” y queda en el historial. Bajar de plan no borra canchas ni miembros: solo impide crear más.</p>
             </ActionForm>
-          ) : <p className={ui.muted}>Necesitás al menos un plan activo y un complejo.</p>}
-        </section>
-        <div className={ui.grid2}>
-          <section className={ui.card} aria-labelledby="cobro">
-            <h2 id="cobro">Registrar pago de suscripción</h2>
-            <p className={ui.faint}>Pagos recibidos por fuera de TURNUP (transferencia, efectivo, link de pago). No se guardan datos de tarjetas.</p>
-            <ActionForm action={recordSubscriptionPaymentAction} submitLabel="Registrar pago" className={ui.stack} resetOnSuccess>
+  );
+  const paymentForm = (
+    <ActionForm action={recordSubscriptionPaymentAction} submitLabel="Registrar pago" className={ui.stack} resetOnSuccess>
               <label className={ui.field}><span className={ui.label}>Complejo</span>
                 <select className={ui.select} name="tenantId" required>
                   {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -115,18 +85,59 @@ export default async function PlansPage() {
               <label className={ui.field}><span className={ui.label}>Nota (opcional)</span><input className={ui.input} name="note" maxLength={300} /></label>
               <label className={ui.checkbox}><input type="checkbox" name="extend" defaultChecked /> Activar la suscripción y extender el vencimiento hasta el fin del período</label>
             </ActionForm>
-          </section>
-          <section className={ui.card} aria-labelledby="pagos">
+  );
+
+  return (
+    <>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Comercial</p><h1>Planes y suscripciones</h1></div>
+          <div className={ui.row}>
+            <EditPanel label="Nuevo plan" title="Nuevo plan" variant="primary">
+              <ActionForm action={savePlanAction.bind(null, null)} submitLabel="Crear plan" className={ui.stack} resetOnSuccess>
+                <PlanFields />
+              </ActionForm>
+            </EditPanel>
+            {plans.some((p) => p.isActive) && tenants.length ? (
+              <EditPanel label="Asignar plan a un complejo" title="Asignar plan a un complejo">
+                {assignForm}
+              </EditPanel>
+            ) : null}
+            {tenants.length ? (
+              <EditPanel label="Registrar pago" title="Registrar pago de suscripción" description="Pagos recibidos por fuera de TURNUP (transferencia, efectivo, link de pago). No se guardan datos de tarjetas.">
+                {paymentForm}
+              </EditPanel>
+            ) : null}
+          </div>
+        </header>
+        <p className={`${ui.alert} ${ui.alertInfo}`}>Los planes definen límites. No hay cobro automático: la suscripción es un registro administrativo.</p>
+        {plans.length === 0 ? <p className={ui.muted}>Todavía no hay planes. Creá el primero con “Nuevo plan”.</p> : null}
+        <div className={ui.grid2}>
+          {plans.map((p) => (
+            <section key={p.id} className={ui.card} aria-label={`Plan ${p.name}`}>
+              <div className={ui.cardHeader}>
+                <h2>{p.name}</h2>
+                <span className={ui.muted}>{p._count.subscriptions} suscripciones{p.isActive ? "" : " · inactivo"}</span>
+              </div>
+              <p className={ui.muted} style={{ margin: 0 }}>{formatMoney(p.priceAmount, p.currency)} por mes · hasta {p.maxCourts ?? "∞"} canchas · {p.maxMembers ?? "∞"} miembros</p>
+              <EditPanel label="Editar plan" title={`Editar plan ${p.name}`}>
+                <ActionForm action={savePlanAction.bind(null, p.id)} submitLabel="Guardar" className={ui.stack}>
+                  <PlanFields plan={p} />
+                </ActionForm>
+              </EditPanel>
+            </section>
+          ))}
+        </div>
+
+        <section className={ui.card} aria-labelledby="pagos">
             <h2 id="pagos">Últimos pagos registrados</h2>
             {payments.length === 0 ? <p className={ui.muted}>Todavía no hay pagos registrados.</p> : (
               <ul className={ui.stackSm} style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {payments.map((p) => (
-                  <li key={p.id}><strong>{formatMoney(p.amount, p.currency)}</strong> · {p.tenant.name} · {day(p.paidAt)}<div className={ui.faint}>Período {p.periodStart.toISOString().slice(0, 10)} a {p.periodEnd.toISOString().slice(0, 10)}{p.note ? ` · ${p.note}` : ""}</div></li>
+                  <li key={p.id}><strong>{formatMoney(p.amount, p.currency)}</strong> · {p.tenant.name} · {day(p.paidAt)}<div className={ui.faint}>Período {day(p.periodStart)} al {day(p.periodEnd)}{p.note ? ` · ${p.note}` : ""}</div></li>
                 ))}
               </ul>
             )}
-          </section>
-        </div>
+        </section>
       </div>
     </>
   );

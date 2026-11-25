@@ -201,7 +201,8 @@ export function formatLocalTime(date: Date, tz: string): string {
 }
 
 export function formatLocalDateTime(date: Date, tz: string): string {
-  return DateTime.fromJSDate(date, { zone: tz }).setLocale("es-AR").toFormat("cccc d 'de' LLLL, HH:mm");
+  // Formato argentino unificado: "mié 25/11/2026, 20:00" (día abreviado ayuda a ubicarse; 24 h).
+  return DateTime.fromJSDate(date, { zone: tz }).setLocale("es-AR").toFormat("ccc dd/LL/yyyy, HH:mm").replace(".", "");
 }
 
 export function minutesToHHMM(minute: number): string {

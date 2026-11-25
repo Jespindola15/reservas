@@ -25,3 +25,13 @@
   .dl { grid-template-columns: 1fr; gap: 0.1rem; }
   .dl dd { margin-bottom: 0.4rem; }
 }
+.summary { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); }
+.summaryMain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.summaryMain strong { font-size: 1.02rem; }
+.summarySide { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.amount { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.more > summary { cursor: pointer; color: var(--text-muted); font-size: var(--fs-sm); list-style: none; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::before { content: "▸ "; }
+.more[open] > summary::before { content: "▾ "; }
+.more[open] > summary { margin-bottom: var(--sp-2); }

@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionForm } from "@/components/ActionForm";
+import { PendingBanner } from "@/components/transfer/PendingBanner";
+import { savePending } from "@/components/transfer/pending-store";
 import { TransferPanel, type TransferData } from "@/components/transfer/TransferPanel";
 import ui from "@/components/ui.module.css";
 import { bookingErrorMessage } from "./booking-errors";
@@ -82,11 +85,16 @@ export function BookingWidget(props: {
   const [copied, setCopied] = useState(false);
   const [payerIsSelf, setPayerIsSelf] = useState(true);
   const [showTaken, setShowTaken] = useState(false);
+  const router = useRouter();
   const needsTransfer = Boolean(props.deposit && props.deposit.type !== "NONE");
   const blocked = needsTransfer && props.transferReady === false;
 
   const timeFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, hour: "2-digit", minute: "2-digit", hour12: false }), [props.timezone]);
-  const dateFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, weekday: "long", day: "numeric", month: "long" }), [props.timezone]);
+  // Fecha argentina DD/MM/AAAA con el día de la semana: "miércoles, 25/11/2026".
+  const dateFmt = useMemo(() => {
+    const f = new Intl.DateTimeFormat("es-AR", { timeZone: props.timezone, weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+    return { format: (d: Date) => f.format(d) };
+  }, [props.timezone]);
   const pillFmt = useMemo(() => new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", weekday: "short", day: "numeric" }), []);
   const localDateOf = useCallback((iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: props.timezone }).format(new Date(iso)), [props.timezone]);
   const money = (cents: number | null, currency: string) =>
@@ -160,7 +168,15 @@ export function BookingWidget(props: {
         }
         return;
       }
-      setResult(json as Result);
+      const r = json as Result;
+      if (r.paymentStatus === "AWAITING_TRANSFER") {
+        // Pantalla exclusiva para pagar (sin la ficha comercial). Se recuerda en este dispositivo
+        // para poder volver si el jugador cierra el navegador.
+        if (r.expiresAt) savePending({ slug: props.slug, code: r.code, tenantName: props.tenantName ?? "el complejo", url: r.trackingUrl, expiresAt: r.expiresAt });
+        router.push(r.trackingUrl);
+        return;
+      }
+      setResult(r);
       setSelection(null);
       reload();
     } catch {
@@ -229,6 +245,7 @@ export function BookingWidget(props: {
 
   return (
     <div className={styles.layout}>
+      <PendingBanner slug={props.slug} />
       <section className={styles.stepBox} aria-labelledby="paso1">
         <h2 id="paso1"><span className={styles.step}>1</span> Elegí el día</h2>
         <div className={styles.calendarStrip} role="radiogroup" aria-label="Fecha">
@@ -343,7 +360,11 @@ export function BookingWidget(props: {
                     {showTaken ? "Ocultar horarios ocupados" : "Ver también los ocupados"}
                   </button>
                 ) : null}
-                {selection ? <p className={ui.faint} style={{ margin: 0 }}>Te asignamos <strong>{selection.court.name}</strong>. Si preferís otra, elegila arriba.</p> : null}
+                {selection ? (
+                  <p className={`${ui.alert} ${ui.alertInfo}`} style={{ margin: 0 }} role="status">
+                    Se asignará <strong>{selection.court.name}</strong> ({SPORT[selection.court.sport]}) a las {timeFmt.format(new Date(selection.slot.startsAt))} hs por <strong>{money(selection.slot.priceAmount, day.currency)}</strong>: es la cancha libre más económica para ese horario. Si preferís otra, elegila arriba.
+                  </p>
+                ) : null}
               </>
             );
           }
@@ -397,7 +418,11 @@ export function BookingWidget(props: {
           <dl className={styles.summaryList} aria-label="Resumen de la reserva">
             {props.tenantName ? <><dt>Complejo</dt><dd>{props.tenantName}</dd></> : null}
             {props.tenantAddress ? <><dt>Dirección</dt><dd>{props.tenantAddress}</dd></> : null}
-            <dt>Cancha</dt><dd><strong>{selection.court.name}</strong></dd>
+            <dt>Cancha</dt>
+            <dd>
+              <strong>{selection.court.name}</strong>
+              {courtId === "ALL" ? <span className={ui.faint}> · asignada automáticamente: la cancha libre más económica para ese horario</span> : null}
+            </dd>
             <dt>Fecha</dt><dd>{dateFmt.format(new Date(selection.slot.startsAt))}</dd>
             <dt>Horario</dt><dd>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} hs ({duration} min)</dd>
             <dt>Cancelación</dt>
