@@ -9,7 +9,8 @@
 #   Si están, también se respaldan las imágenes (el job solo LEE el bucket).
 # Guía paso a paso: docs/RESPALDOS.md.
 # Sin esos secretos el job se saltea (no falla). Corre 1 vez por semana: despierta la base
-# unos segundos, no la mantiene activa. Uso de Actions: ~2 minutos por semana.
+# unos segundos, no la mantiene activa. Uso de Actions: ~3 minutos por semana.
+# Cliente PostgreSQL 18 (la versión de producción en Neon), verificado antes de respaldar.
 name: Respaldo cifrado
 
 on:
@@ -28,9 +29,23 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Base descartable para probar que el respaldo se restaura (solo vive durante el job).
+    services:
+      restore:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: restore-only
+          POSTGRES_DB: turnup_restore_test_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
+      # Producción usa PostgreSQL 18: pg_dump debe ser de esa versión o más nueva.
+      PG_MAJOR: "18"
       BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+      BACKUP_VERIFY_RESTORE_URL: postgresql://postgres:restore-only@localhost:5432/turnup_restore_test_ci
       STORAGE_BACKUP_ENDPOINT: ${{ secrets.STORAGE_BACKUP_ENDPOINT }}
       STORAGE_BACKUP_BUCKET: ${{ secrets.STORAGE_BACKUP_BUCKET }}
       AWS_DEFAULT_REGION: ${{ secrets.STORAGE_BACKUP_REGION }}
@@ -49,29 +64,58 @@ jobs:
           fi
       - uses: actions/checkout@v4
         if: steps.check.outputs.skip != 'true'
-      - name: Instalar cliente PostgreSQL 17 y age
+      - name: Instalar cliente PostgreSQL ${{ env.PG_MAJOR }} y age
         if: steps.check.outputs.skip != 'true'
         run: |
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
-          sudo apt-get install -y -qq postgresql-client-17 age >/dev/null
-          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
-      - name: Respaldo (pg_dump + cifrado age)
+          sudo apt-get install -y -qq "postgresql-client-$PG_MAJOR" age >/dev/null
+          # Ruta absoluta: /usr/bin/pg_dump es un "wrapper" de Ubuntu que puede elegir otra versión.
+          echo "PG_BIN=/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_ENV"
+          echo "/usr/lib/postgresql/$PG_MAJOR/bin" >> "$GITHUB_PATH"
+      - name: Verificar versiones de pg_dump, pg_restore y psql
         if: steps.check.outputs.skip != 'true'
-        run: BACKUP_DIR=backups bash scripts/ops/backup.sh
-      - name: Prueba de restauración aislada (estructura)
+        run: |
+          for t in pg_dump pg_restore psql; do
+            v="$("$PG_BIN/$t" --version)"; echo "$t → $PG_BIN/$t · $v"
+            case "$v" in *" $PG_MAJOR."*) ;; *) echo "::error::$t no es PostgreSQL $PG_MAJOR"; exit 1 ;; esac
+            [ "$(command -v "$t")" = "$PG_BIN/$t" ] || { echo "::error::En el PATH, $t apunta a $(command -v "$t")"; exit 1; }
+          done
+          echo "Cliente PostgreSQL: $("$PG_BIN/pg_dump" --version)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Respaldo (pg_dump, restauración de prueba y cifrado age)
         if: steps.check.outputs.skip != 'true'
-        # Sin la clave privada no se puede descifrar aquí (a propósito): se verifica la integridad
-        # del archivo cifrado. La restauración completa se prueba con scripts/ops/restore-test.sh.
-        run: cd backups && sha256sum --check --quiet ./*.age.sha256 && echo "Integridad OK" >> "$GITHUB_STEP_SUMMARY"
+        # backup.sh compara la versión del servidor con la del cliente, restaura el respaldo en la base
+        # descartable del servicio "restore" y compara los conteos con producción ANTES de cifrar.
+        run: |
+          set +e
+          BACKUP_DIR=backups bash scripts/ops/backup.sh 2> backup.log
+          status=$?
+          cat backup.log >&2
+          grep -E "^Servidor|^Restauración verificada|^  [a-z_]+=" backup.log | awk '!seen[$0]++' | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          rm -f backup.log
+          exit $status
+      - name: Verificar el archivo cifrado
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd backups
+          ls ./*.dump.age >/dev/null
+          ! ls ./*.dump 2>/dev/null || { echo "::error::Quedó un respaldo sin cifrar"; exit 1; }
+          sha256sum --check --quiet ./*.age.sha256
+          head -c 22 ./*.dump.age | grep -q "age-encryption.org/v1" || { echo "::error::El archivo no está cifrado con age"; exit 1; }
+          echo "Archivo cifrado e íntegro: $(ls ./*.dump.age)" >> "$GITHUB_STEP_SUMMARY"
       - name: Respaldo de imágenes (Supabase Storage, opcional, cifrado)
         if: steps.check.outputs.skip != 'true' && env.STORAGE_BACKUP_BUCKET != ''
         run: |
+          # Supabase exige direcciones de estilo "path" (endpoint/bucket/clave).
+          aws configure set default.s3.addressing_style path
+          mkdir -p images
           aws s3 sync "s3://$STORAGE_BACKUP_BUCKET" images --endpoint-url "$STORAGE_BACKUP_ENDPOINT" --only-show-errors
           count=$(find images -type f | wc -l)
-          tar -cf - images | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" --output "backups/imagenes-$(date -u +%Y%m%dT%H%M%SZ).tar.age"
-          (cd backups && sha256sum imagenes-*.tar.age > imagenes.sha256)
+          bytes=$(du -sb images | cut -f1)
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          tar -cf - images | age --encrypt --recipient "$BACKUP_AGE_RECIPIENT" --output "backups/imagenes-$stamp.tar.age"
+          (cd backups && sha256sum "imagenes-$stamp.tar.age" > "imagenes-$stamp.tar.age.sha256" && sha256sum --check --quiet "imagenes-$stamp.tar.age.sha256")
           rm -rf images
-          echo "Imágenes respaldadas: $count" >> "$GITHUB_STEP_SUMMARY"
+          echo "Imágenes respaldadas: $count archivos, $bytes bytes" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: steps.check.outputs.skip != 'true'
         with:

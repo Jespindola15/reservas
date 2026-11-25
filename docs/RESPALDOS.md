@@ -39,7 +39,7 @@ Las tablas nuevas de futuras migraciones también quedan legibles para este rol:
 
 **Por qué BYPASSRLS y por qué es seguro:**
 
-- 26 tablas tienen seguridad por filas (RLS). Sin BYPASSRLS, `pg_dump` aborta o exportaría tablas vacías.
+- Todas las tablas de negocio tienen seguridad por filas (RLS). Sin BYPASSRLS, `pg_dump` aborta o exportaría tablas vacías.
 - BYPASSRLS solo quita el filtro de filas: **no da permiso de escritura**. El rol tiene únicamente `SELECT`.
 - La aplicación se conecta como `reservas_app`, que no es miembro de `turnup_backup` y no puede usarlo
   (`SET ROLE` falla). La contraseña solo vive en los secretos de GitHub, nunca en Netlify.
@@ -82,15 +82,38 @@ Repositorio → **Settings → Secrets and variables → Actions → New reposit
 
 ### 4. Primera ejecución
 
-Actions → **Respaldo cifrado** → *Run workflow*. Debe terminar en verde con "Integridad OK" en el resumen.
+Actions → **Respaldo cifrado** → *Run workflow*. Debe terminar en verde. El resumen del job muestra:
+
+- `Cliente PostgreSQL: pg_dump (PostgreSQL) 18.x` y `Servidor PostgreSQL 18 · cliente 18`.
+- `Restauración verificada: 9 tablas con los mismos conteos` y los conteos (tenants, users, bookings…).
+- `Archivo cifrado e íntegro: ./turnup-….dump.age`.
+- `Imágenes respaldadas: N archivos, B bytes` (si cargaste los secretos de Supabase).
+
+### Versión de PostgreSQL
+
+Producción (Neon) usa **PostgreSQL 18**. `pg_dump` aborta si es más viejo que el servidor
+("server version mismatch"), así que el workflow instala `postgresql-client-18`, usa las rutas absolutas
+`/usr/lib/postgresql/18/bin/…` (en Ubuntu, `/usr/bin/pg_dump` puede elegir otra versión instalada) y
+verifica las tres herramientas antes de empezar. `scripts/ops/backup.sh` y `restore-test.sh` vuelven a
+comparar la versión del cliente con la del servidor y explican qué instalar si no alcanza.
+
+**Si Neon pasa a PostgreSQL 19:** cambiá `PG_MAJOR: "18"` y la imagen `postgres:18` en
+`.github/workflows/backup.yml`. Para usarlo en tu computadora: `PG_BIN=/ruta/a/postgresql/18/bin`.
+
+### Prueba de restauración en cada respaldo
+
+Antes de cifrar, el job restaura el respaldo en una base PostgreSQL 18 **descartable** que solo existe
+durante el job (servicio `restore`, sin acceso a internet ni a producción) y compara los conteos de las
+tablas clave con producción. Si algo no coincide, el respaldo falla y no se sube. El archivo sin cifrar
+nunca sale del job: solo se sube el `.dump.age`.
 
 ## Restauración (siempre en una base nueva, nunca sobre producción)
 
 1. Descargá el artefacto `turnup-backup-<id>` desde Actions.
 2. Probalo en una base aislada:
    - En Neon: creá una rama nueva y, dentro de ella, una base vacía llamada `turnup_restore_test_<fecha>`.
-   - Ejecutá: `BACKUP_AGE_IDENTITY=turnup-backup-key.txt RESTORE_TARGET_URL=<url-de-esa-base> scripts/ops/restore-test.sh turnup-XXXX.dump.age`
-   - El script verifica la suma SHA-256, descifra, restaura y cuenta filas. Se niega a restaurar sobre una base con otro nombre.
+   - Ejecutá: `PG_BIN=<carpeta del cliente PostgreSQL 18> BACKUP_AGE_IDENTITY=turnup-backup-key.txt RESTORE_TARGET_URL=<url-de-esa-base> scripts/ops/restore-test.sh turnup-XXXX.dump.age`
+   - El script verifica la suma SHA-256, descifra, restaura y cuenta filas. Se niega a restaurar sobre una base con otro nombre o que no esté vacía.
    - Al terminar, borrá la rama.
 3. Restauración real ante un desastre: crear una rama o proyecto **nuevo** en Neon, restaurar ahí con
    `pg_restore --no-owner --dbname=<nueva>`, verificar y recién entonces apuntar Netlify a esa base.
@@ -120,6 +143,27 @@ En un entorno aislado, con los scripts del repo:
 4. Conteos restaurados: 3 complejos, 3 usuarios, 3 reservas, 3 clientes, 27 registros de auditoría y las 12 migraciones.
    Coinciden con producción al momento del volcado. Un complejo y un registro de auditoría se crearon en producción 2 minutos después del volcado.
 5. Se borraron la rama, el volcado y la clave temporal.
+
+## Corrección PostgreSQL 18 (25/11/2026)
+
+El primer run del workflow falló con `server version mismatch` (servidor 18.7, pg_dump 17.12). Cambios y pruebas:
+
+1. Workflow con `postgresql-client-18`, rutas absolutas y verificación de versión y PATH de pg_dump,
+   pg_restore y psql. Los scripts comparan la versión del cliente con la del servidor antes de empezar.
+2. Se reprodujo el error con un cliente 16 contra un servidor 18: ahora se corta antes de volcar, con el
+   paquete a instalar en el mensaje.
+3. Simulación local de todos los pasos del workflow (PostgreSQL 18 + emulador S3 con estilo "path"):
+   volcado, restauración de prueba con conteos iguales, archivo `.dump.age` íntegro y con cabecera age,
+   y respaldo de imágenes con bucket vacío y con 3 imágenes (descifradas, idénticas a las originales).
+4. Copia aislada de producción (rama temporal de Neon, borrada al terminar): volcado con pg_dump 18.7,
+   restauración de prueba en una base vacía con los mismos conteos (4 complejos, 4 usuarios, 4 reservas,
+   4 clientes, 34 registros de auditoría, 12 migraciones), y luego descifrado del `.dump.age` y
+   restauración completa con `restore-test.sh` (68 s). Extensiones: solo plpgsql y btree_gist.
+5. El rol `turnup_backup` de producción está bien configurado: BYPASSRLS, sin herencia, límite 2,
+   SELECT en las 33 tablas y en las secuencias, ningún permiso de escritura, la app no puede usarlo.
+6. Hallazgo: a través del pooler de Neon (`-pooler`) la restauración deja la sesión con `search_path`
+   vacío. Los scripts ahora rechazan URLs con `-pooler`. Verificá que `BACKUP_DATABASE_URL` use el host directo.
+7. Las 254 pruebas de integración pasan contra PostgreSQL 18; la integración continua usa `postgres:18`.
 
 **Pendiente para dar el sistema por terminado:**
 
