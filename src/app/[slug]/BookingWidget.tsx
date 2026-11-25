@@ -73,13 +73,15 @@ export function BookingWidget(props: {
   const [durationPref, setDuration] = useState(90);
   const duration = durations.includes(durationPref) ? durationPref : (durations[0] ?? 60);
   const [reloadToken, setReloadToken] = useState(0);
-  const [fetched, setFetched] = useState<{ key: string; day: Day | null; error: string | null } | null>(null);
+  // `at`: momento de la respuesta; se usa para ocultar horarios ya pasados sin leer el reloj durante el render.
+  const [fetched, setFetched] = useState<{ key: string; day: Day | null; error: string | null; at: number } | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
   const [payerIsSelf, setPayerIsSelf] = useState(true);
+  const [showTaken, setShowTaken] = useState(false);
   const needsTransfer = Boolean(props.deposit && props.deposit.type !== "NONE");
   const blocked = needsTransfer && props.transferReady === false;
 
@@ -103,11 +105,11 @@ export function BookingWidget(props: {
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error?.message ?? "No pudimos cargar los horarios.");
-        setFetched({ key: requestKey, day: json as Day, error: null });
+        setFetched({ key: requestKey, day: json as Day, error: null, at: Date.now() });
       })
       .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        setFetched({ key: requestKey, day: null, error: e instanceof Error ? e.message : "No pudimos cargar los horarios." });
+        setFetched({ key: requestKey, day: null, error: e instanceof Error ? e.message : "No pudimos cargar los horarios.", at: Date.now() });
       });
     return () => ctrl.abort();
   }, [props.slug, date, duration, requestKey]);
@@ -227,7 +229,7 @@ export function BookingWidget(props: {
 
   return (
     <div className={styles.layout}>
-      <section className={ui.card} aria-labelledby="paso1">
+      <section className={styles.stepBox} aria-labelledby="paso1">
         <h2 id="paso1"><span className={styles.step}>1</span> Elegí el día</h2>
         <div className={styles.calendarStrip} role="radiogroup" aria-label="Fecha">
           {pills.map((d) => {
@@ -250,8 +252,8 @@ export function BookingWidget(props: {
         </label>
       </section>
 
-      <section className={ui.card} aria-labelledby="paso2">
-        <h2 id="paso2"><span className={styles.step}>2</span> Elegí la cancha</h2>
+      <section className={styles.stepBox} aria-labelledby="paso2">
+        <h2 id="paso2"><span className={styles.step}>2</span> Cancha y duración</h2>
         {sports.length > 1 ? (
           <div className={styles.chips} role="radiogroup" aria-label="Deporte">
             {(["ALL", ...sports] as const).map((s) => (
@@ -262,80 +264,132 @@ export function BookingWidget(props: {
             ))}
           </div>
         ) : null}
-        <div className={styles.courtCards} role="radiogroup" aria-label="Cancha">
-          <button type="button" role="radio" aria-checked={courtId === "ALL"} className={courtId === "ALL" ? styles.courtActive : styles.courtCard}
+        <div className={styles.courtStrip} role="radiogroup" aria-label="Cancha">
+          <button type="button" role="radio" aria-checked={courtId === "ALL"} className={courtId === "ALL" ? styles.courtChipActive : styles.courtChip}
             onClick={() => { setCourtId("ALL"); setSelection(null); }}>
-            <span className={styles.courtThumb} aria-hidden>★</span>
-            <span><strong>Cualquier cancha</strong><span className={ui.faint}>Ver todos los horarios</span></span>
+            <strong>Cualquier cancha</strong><span>Más horarios</span>
           </button>
           {props.courts.filter((c) => sport === "ALL" || c.sport === sport).map((c) => (
-            <button key={c.id} type="button" role="radio" aria-checked={courtId === c.id} className={courtId === c.id ? styles.courtActive : styles.courtCard}
-              onClick={() => { setCourtId(c.id); setSelection(null); }}>
-              {c.imageId ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img className={styles.courtThumb} src={`/api/public/${props.slug}/courts/${c.id}/images/${c.imageId}`} alt="" loading="lazy" />
-              ) : (
-                <span className={styles.courtThumb} aria-hidden>{SPORT[c.sport].slice(0, 1)}</span>
-              )}
-              <span>
-                <strong>{c.name}</strong>
-                <span className={ui.faint}>{SPORT[c.sport]}</span>
-                {courtFeatures(c) ? <span className={styles.courtDesc}>{courtFeatures(c)}</span> : null}
-                {c.description ? <span className={styles.courtDesc}>{c.description}</span> : null}
-              </span>
+            <button key={c.id} type="button" role="radio" aria-checked={courtId === c.id} className={courtId === c.id ? styles.courtChipActive : styles.courtChip}
+              onClick={() => { setCourtId(c.id); setSelection(null); }} title={[courtFeatures(c), c.description].filter(Boolean).join(" · ") || undefined}>
+              <strong>{c.name}</strong><span>{SPORT[c.sport]}{courtFeatures(c) ? ` · ${courtFeatures(c)}` : ""}</span>
             </button>
           ))}
         </div>
+        {durations.length > 1 ? (
+          <div className={styles.segmented} role="radiogroup" aria-label="Duración">
+            {durations.map((d) => (
+              <button key={d} type="button" role="radio" aria-checked={d === duration} className={d === duration ? styles.segActive : styles.seg}
+                onClick={() => { setDuration(d); setSelection(null); }}>
+                {d} min
+              </button>
+            ))}
+          </div>
+        ) : <p className={ui.faint} style={{ margin: 0 }}>Turnos de {duration} min</p>}
       </section>
 
-      <section aria-labelledby="paso3" aria-busy={loading} className={ui.stack}>
-        <h2 id="paso3" className={styles.sectionTitle}><span className={styles.step}>3</span> Duración y horario</h2>
-        <div className={styles.segmented} role="radiogroup" aria-label="Duración">
-          {durations.map((d) => (
-            <button key={d} type="button" role="radio" aria-checked={d === duration} className={d === duration ? styles.segActive : styles.seg}
-              onClick={() => { setDuration(d); setSelection(null); }}>
-              {d} min
-            </button>
-          ))}
-        </div>
-        <p className={ui.faint} style={{ marginTop: "-0.5rem" }}>Los turnos de madrugada (después de las 00:00) aparecen dentro del día anterior.</p>
-        {loading ? <div className={`${ui.skeleton}`} style={{ height: 160 }} aria-label="Cargando horarios" /> : null}
+      <section aria-labelledby="paso3" aria-busy={loading} className={styles.stepBox}>
+        <h2 id="paso3" className={styles.sectionTitle}><span className={styles.step}>3</span> Elegí el horario</h2>
+        {loading ? (
+          <div className={styles.slots} role="status" aria-label="Cargando horarios">
+            {Array.from({ length: 8 }, (_, i) => <div key={i} className={ui.skeleton} style={{ height: 56 }} />)}
+          </div>
+        ) : null}
         {loadError ? (
           <div className={`${ui.alert} ${ui.alertError}`} role="alert">
             {loadError} <button className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`} onClick={reload}>Reintentar</button>
           </div>
         ) : null}
         {!loading && day && dayCourts.length === 0 ? <p className={ui.empty}>No hay canchas con turnos de {duration} min para ese filtro.</p> : null}
-        {!loading && day ? dayCourts.map((court) => {
-          const free = court.slots.filter((s) => s.available);
-          return (
-            <article key={court.id} className={ui.card}>
-              <div className={ui.spread} style={{ marginBottom: "0.75rem" }}>
-                <h3 style={{ margin: 0 }}>{court.name}</h3>
-                <span className={ui.badge}>{SPORT[court.sport]}</span>
+        {!loading && day && dayCourts.length > 0 ? (() => {
+          const nowMs = fetched?.at ?? 0;
+          const upcoming = (c: CourtDay) => c.slots.filter((x) => new Date(x.startsAt).getTime() > nowMs);
+          const closed = dayCourts.filter((c) => c.closedReason);
+          // "Cualquier cancha": una sola grilla por horario; al elegir, se asigna la cancha libre más barata.
+          if (courtId === "ALL") {
+            const byTime = new Map<string, { slot: Slot; court: CourtDay; free: number }>();
+            for (const c of dayCourts) {
+              if (c.closedReason) continue;
+              for (const slot of upcoming(c)) {
+                const cur = byTime.get(slot.startsAt);
+                if (!slot.available) { if (!cur && showTaken) byTime.set(slot.startsAt, { slot, court: c, free: 0 }); continue; }
+                if (!cur || !cur.slot.available || (slot.priceAmount ?? Infinity) < (cur.slot.priceAmount ?? Infinity)) {
+                  byTime.set(slot.startsAt, { slot, court: c, free: (cur?.slot.available ? cur.free : 0) + 1 });
+                } else cur.free += 1;
+              }
+            }
+            const rows = [...byTime.values()].sort((x, y) => x.slot.startsAt.localeCompare(y.slot.startsAt));
+            const anyTaken = dayCourts.some((c) => upcoming(c).some((x) => !x.available));
+            return (
+              <>
+                {closed.map((c) => <p key={c.id} className={`${ui.alert} ${ui.alertWarn}`}>{c.name} cerrada: {c.closedReason}</p>)}
+                {rows.length === 0 ? <p className={ui.empty}>No quedan turnos libres este día. Probá otra fecha.</p> : (
+                  <div className={styles.slots}>
+                    {rows.map(({ slot, court, free }) => {
+                      const selected = selection?.slot.startsAt === slot.startsAt;
+                      return (
+                        <button key={slot.startsAt} type="button" disabled={!slot.available} className={selected ? styles.slotSelected : styles.slot}
+                          aria-pressed={selected} onClick={() => choose(court, slot)}
+                          aria-label={`${timeFmt.format(new Date(slot.startsAt))}, ${slot.available ? `${money(slot.priceAmount, day.currency)}, ${free} cancha${free === 1 ? "" : "s"} libre${free === 1 ? "" : "s"}` : "no disponible"}`}>
+                          <span className={styles.slotTime}>{timeFmt.format(new Date(slot.startsAt))}{localDateOf(slot.startsAt) !== date ? <small> madrugada</small> : null}</span>
+                          <span className={styles.slotPrice}>{slot.available ? money(slot.priceAmount, day.currency) : "Ocupado"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {anyTaken ? (
+                  <button type="button" className={`${ui.button} ${ui.buttonGhost} ${ui.buttonSmall}`} onClick={() => setShowTaken((v) => !v)} aria-pressed={showTaken}>
+                    {showTaken ? "Ocultar horarios ocupados" : "Ver también los ocupados"}
+                  </button>
+                ) : null}
+                {selection ? <p className={ui.faint} style={{ margin: 0 }}>Te asignamos <strong>{selection.court.name}</strong>. Si preferís otra, elegila arriba.</p> : null}
+              </>
+            );
+          }
+          return dayCourts.map((court) => {
+            const list = upcoming(court);
+            const free = list.filter((x) => x.available);
+            const visible = showTaken ? list : free;
+            return (
+              <div key={court.id} className={ui.stackSm}>
+                {court.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`}>Cerrado: {court.closedReason}</p>
+                  : free.length === 0 ? <p className={ui.empty}>No quedan turnos libres en {court.name} este día. Probá “Cualquier cancha” u otra fecha.</p> : null}
+                <div className={styles.slots}>
+                  {visible.map((slot) => {
+                    const selected = selection?.slot.startsAt === slot.startsAt && selection.court.id === court.id;
+                    return (
+                      <button key={slot.startsAt} type="button" disabled={!slot.available} className={selected ? styles.slotSelected : styles.slot}
+                        aria-pressed={selected} onClick={() => choose(court, slot)}>
+                        <span className={styles.slotTime}>{timeFmt.format(new Date(slot.startsAt))}{localDateOf(slot.startsAt) !== date ? <small> madrugada</small> : null}</span>
+                        <span className={styles.slotPrice}>{slot.available ? money(slot.priceAmount, day.currency) : "Ocupado"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {list.length > free.length ? (
+                  <button type="button" className={`${ui.button} ${ui.buttonGhost} ${ui.buttonSmall}`} onClick={() => setShowTaken((v) => !v)} aria-pressed={showTaken}>
+                    {showTaken ? "Ocultar horarios ocupados" : "Ver también los ocupados"}
+                  </button>
+                ) : null}
               </div>
-              {court.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`}>Cerrado: {court.closedReason}</p>
-                : court.slots.length === 0 ? <p className={ui.muted}>Sin turnos de {duration} min este día.</p>
-                : free.length === 0 ? <p className={ui.muted}>No quedan turnos libres este día.</p> : null}
-              <div className={styles.slots}>
-                {court.slots.map((slot) => {
-                  const selected = selection?.slot.startsAt === slot.startsAt && selection.court.id === court.id;
-                  return (
-                    <button key={slot.startsAt} type="button" disabled={!slot.available} className={selected ? styles.slotSelected : styles.slot}
-                      aria-pressed={selected} onClick={() => choose(court, slot)}>
-                      <span className={styles.slotTime}>
-                        {timeFmt.format(new Date(slot.startsAt))}
-                        {localDateOf(slot.startsAt) !== date ? <small> madrugada</small> : null}
-                      </span>
-                      <span className={styles.slotPrice}>{slot.available ? money(slot.priceAmount, day.currency) : "Ocupado"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </article>
-          );
-        }) : null}
+            );
+          });
+        })() : null}
+        {day && dayCourts.some((c) => c.slots.some((x) => localDateOf(x.startsAt) !== date)) ? (
+          <p className={ui.faint}>Los turnos después de las 00:00 figuran dentro del día anterior (marcados “madrugada”).</p>
+        ) : null}
       </section>
+
+      {selection ? (
+        <div className={styles.selectBar} aria-live="polite">
+          <div>
+            <strong>{selection.court.name} · {timeFmt.format(new Date(selection.slot.startsAt))} hs</strong>
+            <span className={ui.faint}>{dateFmt.format(new Date(selection.slot.startsAt))} · {money(selection.slot.priceAmount, day?.currency ?? "ARS")}</span>
+          </div>
+          <button type="button" className={ui.button} onClick={() => document.getElementById("datos")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Continuar</button>
+        </div>
+      ) : null}
 
       {selection ? (
         <section className={`${ui.card} ${styles.checkout}`} id="datos" aria-labelledby="paso4">
@@ -344,21 +398,8 @@ export function BookingWidget(props: {
             {props.tenantName ? <><dt>Complejo</dt><dd>{props.tenantName}</dd></> : null}
             {props.tenantAddress ? <><dt>Dirección</dt><dd>{props.tenantAddress}</dd></> : null}
             <dt>Cancha</dt><dd><strong>{selection.court.name}</strong></dd>
-            <dt>Deporte</dt><dd>{SPORT[selection.court.sport]}</dd>
             <dt>Fecha</dt><dd>{dateFmt.format(new Date(selection.slot.startsAt))}</dd>
-            <dt>Horario</dt><dd>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} ({duration} min)</dd>
-            <dt>Duración</dt><dd>{duration} minutos</dd>
-            <dt>Precio total</dt><dd className={styles.total}>{money(selection.slot.priceAmount, day?.currency ?? "ARS")}</dd>
-            {(() => {
-              const dep = depositFor(selection.slot.priceAmount, props.deposit);
-              if (dep === null || selection.slot.priceAmount === null) return null;
-              return (
-                <>
-                  <dt>Seña requerida</dt><dd>{money(dep, day?.currency ?? "ARS")}{props.deposit?.note ? <span className={ui.faint}> · {props.deposit.note}</span> : null}</dd>
-                  <dt>Saldo restante</dt><dd>{money(selection.slot.priceAmount - dep, day?.currency ?? "ARS")}</dd>
-                </>
-              );
-            })()}
+            <dt>Horario</dt><dd>{timeFmt.format(new Date(selection.slot.startsAt))} a {timeFmt.format(new Date(selection.slot.endsAt))} hs ({duration} min)</dd>
             <dt>Cancelación</dt>
             <dd>
               {props.cancellationMinutes !== undefined
@@ -369,6 +410,25 @@ export function BookingWidget(props: {
               {props.cancellationPolicy ?? ""}
             </dd>
           </dl>
+          {(() => {
+            const cur = day?.currency ?? "ARS";
+            const price = selection.slot.priceAmount;
+            const dep = depositFor(price, props.deposit);
+            return (
+              <div className={styles.money} aria-label="Importes">
+                <div className={styles.moneyRow}><span>Precio del turno</span><strong className={styles.total}>{money(price, cur)}</strong></div>
+                {dep !== null && price !== null ? (
+                  <>
+                    <div className={styles.moneyRow}><span>{dep === price ? "A transferir ahora (total)" : "Seña a transferir ahora"}</span><strong className={styles.moneyDue}>{money(dep, cur)}</strong></div>
+                    {dep < price ? <div className={styles.moneyRow}><span>Saldo a pagar en el complejo</span><span>{money(price - dep, cur)}</span></div> : null}
+                    {props.deposit?.note ? <span className={ui.faint}>{props.deposit.note}</span> : null}
+                  </>
+                ) : (
+                  <span className={ui.faint}>Se paga en el complejo. No hay pago anticipado.</span>
+                )}
+              </div>
+            );
+          })()}
           <form onSubmit={submit} className={ui.stack}>
             <label className={ui.field}>
               <span className={ui.label}>Nombre y apellido</span>

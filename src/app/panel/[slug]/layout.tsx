@@ -1,12 +1,12 @@
 import { notFound, redirect } from "next/navigation";
-import { Brand } from "@/components/Brand";
+import { AppShell, type NavGroup, type NavItem } from "@/components/shell/AppShell";
 import { requireUserPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { authorizeTenantAccess, hasPermission } from "@/modules/access/authorize";
 import { panelBadges } from "@/modules/inbox/service";
 import { SignOutButton } from "../SignOutButton";
-import { MobileTabs, SidebarNav } from "./SidebarNav";
-import styles from "./shell.module.css";
+
+const ROLE = { OWNER: "Dueño", ADMIN: "Administrador", STAFF: "Personal" } as const;
 
 /**
  * Estructura del panel. La autorización acá es de PRESENTACIÓN: cada página y
@@ -24,34 +24,72 @@ export default async function PanelLayout({ children, params }: { children: Reac
     throw e;
   }
   const { tenant, role } = access;
-  const canManage = hasPermission(role, "court.manage");
-  const badges = await panelBadges(access.ctx).catch(() => ({ unread: 0, transfers: 0 }));
+  const can = (p: Parameters<typeof hasPermission>[1]) => hasPermission(role, p);
+  const badges = await panelBadges(access.ctx).catch(() => ({ unread: 0, transfers: 0, incidents: 0 }));
+  const b = `/panel/${slug}`;
+
+  const groups: NavGroup[] = [
+    {
+      items: [
+        { href: b, label: "Hoy", icon: "dashboard", exact: true },
+        { href: `${b}/calendario`, label: "Calendario", icon: "calendar" },
+        { href: `${b}/reservas`, label: "Reservas", icon: "list" },
+        { href: `${b}/transferencias`, label: "Transferencias", icon: "transfer", count: badges.transfers + badges.incidents },
+        { href: `${b}/clientes`, label: "Clientes", icon: "users" },
+        { href: `${b}/avisos`, label: "Avisos", icon: "bell", count: badges.unread },
+      ],
+    },
+    ...(can("court.manage")
+      ? [
+          {
+            title: "Complejo",
+            items: [
+              { href: `${b}/canchas`, label: "Canchas y precios", icon: "courts" },
+              { href: `${b}/horarios`, label: "Feriados y bloqueos", icon: "clock" },
+              { href: `${b}/pagina`, label: "Página y fotos", icon: "camera" },
+              { href: `${b}/opiniones`, label: "Opiniones", icon: "reviews" },
+            ] satisfies NavItem[],
+          },
+          {
+            title: "Negocio",
+            items: [
+              { href: `${b}/finanzas`, label: "Finanzas", icon: "finance" },
+              { href: `${b}/estadisticas`, label: "Estadísticas", icon: "stats" },
+              { href: `${b}/cobros`, label: "Datos de cobro", icon: "wallet" },
+              { href: `${b}/plan`, label: "Plan y suscripción", icon: "plan" },
+            ] satisfies NavItem[],
+          },
+          {
+            title: "Configuración",
+            items: [
+              { href: `${b}/equipo`, label: "Usuarios y permisos", icon: "userCog" },
+              { href: `${b}/ajustes`, label: "Reglas de reserva", icon: "settings" },
+            ] satisfies NavItem[],
+          },
+        ]
+      : []),
+    { items: [{ href: `/${slug}`, label: "Ver mi página pública", icon: "external", external: true }] },
+  ];
+  const tabs: NavItem[] = [
+    { href: b, label: "Hoy", icon: "dashboard", exact: true },
+    { href: `${b}/calendario`, label: "Calendario", icon: "calendar" },
+    { href: `${b}/reservas`, label: "Reservas", icon: "list" },
+    { href: `${b}/transferencias`, label: "Pagos", icon: "transfer", count: badges.transfers },
+  ];
 
   return (
-    <div className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <div className={styles.sidebarTop}>
-          <Brand href="/panel" />
-          <details className={styles.mobileMenu}>
-            <summary aria-label="Abrir menú">Menú</summary>
-            <SidebarNav slug={slug} canManage={canManage} badges={badges} />
-          </details>
-        </div>
-        <div className={styles.tenantBox}>
-          <span className={styles.tenantLabel}>Complejo</span>
-          <strong>{tenant.name}</strong>
-          <span className={styles.role}>{role === "OWNER" ? "Dueño" : role === "ADMIN" ? "Administrador" : "Personal"}</span>
-        </div>
-        <div className={styles.desktopNav}>
-          <SidebarNav slug={slug} canManage={canManage} badges={badges} />
-        </div>
-        <div className={styles.sidebarFooter}>
-          <span className={styles.userName}>{user.name}</span>
-          <SignOutButton />
-        </div>
-      </aside>
-      <main className={styles.main}>{children}</main>
-      <MobileTabs slug={slug} />
-    </div>
+    <AppShell
+      homeHref={b}
+      context={{ label: "Complejo", title: tenant.name, detail: ROLE[role] }}
+      groups={groups}
+      tabs={tabs}
+      user={{ name: user.name }}
+      inboxHref={`${b}/avisos`}
+      unread={badges.unread}
+      primaryAction={can("booking.manage") ? { href: `${b}/calendario?nueva=1`, label: "Nueva reserva" } : undefined}
+      signOut={<SignOutButton compact />}
+    >
+      {children}
+    </AppShell>
   );
 }

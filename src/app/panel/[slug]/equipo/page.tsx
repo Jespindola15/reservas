@@ -38,9 +38,9 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                   return (
                     <tr key={m.id}>
                       <td><strong>{m.user.name}</strong><div className={ui.faint}>{m.user.email}</div></td>
-                      <td>{ROLE[m.role]}</td>
-                      <td><span className={`${ui.badge} ${m.isActive ? ui.badgeCONFIRMED : ui.badgeEXPIRED}`}>{m.isActive ? "Activo" : "Sin acceso"}</span></td>
-                      <td>
+                      <td data-label="Rol">{ROLE[m.role]}</td>
+                      <td data-label="Estado"><span className={`${ui.badge} ${m.isActive ? ui.badgeCONFIRMED : ui.badgeEXPIRED}`}>{m.isActive ? "Activo" : "Sin acceso"}</span></td>
+                      <td data-label="Acciones">
                         {editable ? (
                           <div className={ui.row}>
                             {access.role === "OWNER" ? (

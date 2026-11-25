@@ -1,0 +1,79 @@
+.shell { min-height: 100vh; }
+
+/* ---------------------------------------------------------------- Barra lateral (escritorio) */
+.sidebar {
+  position: fixed; inset: 0 auto 0 0; width: 256px; z-index: 30; display: none; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-3); background: var(--bg-2); border-right: 1px solid var(--border);
+}
+.logo { display: inline-flex; color: var(--text); padding: 4px var(--sp-2); line-height: 0; border-radius: 8px; }
+.context { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2); min-width: 0; }
+.contextLabel { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); font-weight: 650; }
+.contextTitle { font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contextDetail { font-size: var(--fs-xs); color: var(--lime); }
+.primary { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: 40px; border-radius: var(--radius); background: var(--lime); color: var(--on-lime); font-weight: 650; font-size: var(--fs-sm); text-decoration: none; margin: 0 var(--sp-1); }
+.primary:hover { background: var(--lime-strong); }
+.navScroll { flex: 1; overflow-y: auto; margin: 0 calc(-1 * var(--sp-1)); padding: 0 var(--sp-1); }
+.nav { display: flex; flex-direction: column; gap: var(--sp-4); }
+.group { display: flex; flex-direction: column; gap: 1px; }
+.groupTitle { margin: 0 0 4px; padding: 0 var(--sp-2); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); font-weight: 650; }
+.item, .itemActive {
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 var(--sp-2); border-radius: var(--radius-sm);
+  color: var(--text-muted); text-decoration: none; font-weight: 550; font-size: var(--fs-sm);
+}
+.item:hover { background: var(--surface-2); color: var(--text); }
+.itemActive { background: var(--surface-3); color: var(--text); }
+.itemActive svg { color: var(--lime); }
+.itemLabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--warning); color: #111; font-size: 11px; font-weight: 800; display: inline-grid; place-items: center; }
+.ext { color: var(--text-faint); }
+.footer { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-2) 0; border-top: 1px solid var(--border); }
+.avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); color: var(--text); font-size: 12px; font-weight: 700; }
+.userName { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- Barra superior (celular/tablet) */
+.topbar {
+  position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: var(--sp-2);
+  height: var(--topbar-h); padding: 0 var(--sp-2) 0 var(--sp-3);
+  background: rgb(9 9 11 / 92%); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+}
+.topTitle { flex: 1; min-width: 0; font-weight: 650; font-size: var(--fs-sm); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: var(--sp-2); border-left: 1px solid var(--border); }
+.topIcon { position: relative; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius); border: 0; background: transparent; color: var(--text); cursor: pointer; }
+.topIcon:hover { background: var(--surface-2); }
+.dot { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 2px var(--bg); }
+
+/* ---------------------------------------------------------------- Menú lateral móvil */
+.drawerWrap { position: fixed; inset: 0; z-index: 60; }
+.scrim { position: absolute; inset: 0; border: 0; background: rgb(0 0 0 / 65%); cursor: pointer; }
+.drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(320px, 88vw); display: flex; flex-direction: column; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-3) calc(var(--sp-4) + env(safe-area-inset-bottom)); background: var(--bg-2); border-left: 1px solid var(--border-strong); overflow-y: auto;
+}
+.drawerHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.drawer .item, .drawer .itemActive { min-height: 44px; font-size: var(--fs-md); }
+
+/* ---------------------------------------------------------------- Contenido */
+.main { min-width: 0; padding: var(--sp-5) var(--sp-4) calc(var(--bottomnav-h) + 88px + env(safe-area-inset-bottom)); max-width: 1320px; }
+
+/* ---------------------------------------------------------------- Barra inferior + acción flotante */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr);
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); background: rgb(13 13 16 / 96%); backdrop-filter: blur(12px); border-top: 1px solid var(--border);
+}
+.tab, .tabActive {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px;
+  border: 0; background: none; border-radius: var(--radius); font-size: 11px; font-weight: 600; color: var(--text-faint); text-decoration: none; cursor: pointer;
+}
+.tabActive { color: var(--lime); }
+.tabIcon { position: relative; line-height: 0; }
+.tabCount { position: absolute; top: -6px; right: -10px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--warning); color: #111; font-size: 10px; font-weight: 800; display: grid; place-items: center; }
+.fab {
+  position: fixed; right: var(--sp-4); bottom: calc(var(--bottomnav-h) + var(--sp-4) + env(safe-area-inset-bottom)); z-index: 41;
+  width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: var(--lime); color: var(--on-lime); box-shadow: var(--shadow-pop);
+}
+
+@media (min-width: 768px) { .main { padding-left: var(--sp-6); padding-right: var(--sp-6); } }
+@media (min-width: 1024px) {
+  .sidebar { display: flex; }
+  .topbar, .tabs, .fab { display: none; }
+  .main { margin-left: 256px; padding: var(--sp-8) var(--sp-8) var(--sp-8); }
+}

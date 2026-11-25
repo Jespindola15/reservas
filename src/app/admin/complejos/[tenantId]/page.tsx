@@ -2,15 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { listPlans } from "@/modules/platform/plans";
 import { getTenantAdmin } from "@/modules/platform/tenants";
-import { SignOutButton } from "../../../panel/SignOutButton";
-import { AdminNav } from "../../AdminNav";
-import { archiveTenantAction, assignSubscriptionAction, changeOwnerAction, extendTrialAction, renameTenantAction, setTenantStatusAction, unarchiveTenantAction } from "../../actions";
+import { archiveTenantAction, assignSubscriptionAction, changeOwnerAction, extendTrialAction, updateTenantBasicsAction, setTenantStatusAction, unarchiveTenantAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Complejo · Superadministrador" };
 const ROLE: Record<string, string> = { OWNER: "Dueño", ADMIN: "Administrador", STAFF: "Personal" };
@@ -35,9 +32,8 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
 
   return (
     <>
-      <TopBar><SignOutButton /></TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>{t.name}</h1><AdminNav current="/admin/complejos" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Complejo</p><h1>{t.name}</h1></div></header>
         <div className={ui.row}>
           <Link href="/admin/complejos" className={ui.faint}>← Complejos</Link>
           <Link href={`/${t.slug}`} target="_blank" rel="noopener" className={`${ui.button} ${ui.buttonSmall} ${ui.buttonSecondary}`}>Ver página pública</Link>
@@ -61,9 +57,22 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
               <dt>Cobro por transferencia</dt><dd>{t.depositType === "NONE" ? "No pide pago anticipado" : t.paymentSettings ? "Configurado" : "Pide seña pero no cargó datos (reservas online bloqueadas)"}</dd>
               <dt>En el catálogo</dt><dd>{t.publicListed && t.status === "ACTIVE" && !t.archivedAt ? "Sí" : "No"}</dd>
             </dl>
-            <ActionForm action={renameTenantAction.bind(null, t.id)} submitLabel="Guardar nombre" small className={ui.row}>
-              <input className={ui.input} name="name" defaultValue={t.name} minLength={2} maxLength={80} required aria-label="Nombre del complejo" style={{ maxWidth: 260 }} />
-            </ActionForm>
+            <details className={ui.details}>
+              <summary>Editar datos del complejo</summary>
+              <ActionForm action={updateTenantBasicsAction.bind(null, t.id)} submitLabel="Guardar datos" className={ui.stack}>
+                <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" defaultValue={t.name} minLength={2} maxLength={80} required /></label>
+                <label className={ui.field}><span className={ui.label}>Dirección</span><input className={ui.input} name="address" defaultValue={t.address ?? ""} maxLength={160} /></label>
+                <div className={ui.grid2}>
+                  <label className={ui.field}><span className={ui.label}>Ciudad</span><input className={ui.input} name="city" defaultValue={t.city ?? ""} maxLength={80} /></label>
+                  <label className={ui.field}><span className={ui.label}>Provincia</span><input className={ui.input} name="province" defaultValue={t.province ?? ""} maxLength={80} /></label>
+                </div>
+                <div className={ui.grid2}>
+                  <label className={ui.field}><span className={ui.label}>Teléfono de contacto</span><input className={ui.input} name="contactPhone" type="tel" defaultValue={t.contactPhone ?? ""} maxLength={30} /></label>
+                  <label className={ui.field}><span className={ui.label}>Email de contacto</span><input className={ui.input} name="contactEmail" type="email" defaultValue={t.contactEmail ?? ""} maxLength={254} /></label>
+                </div>
+                <p className={ui.hint} style={{ margin: 0 }}>La dirección web (/{t.slug}) no se cambia para no romper enlaces ya compartidos.</p>
+              </ActionForm>
+            </details>
             <h3>Canchas</h3>
             {t.courts.length ? <ul style={{ paddingLeft: "1rem" }}>{t.courts.map((c) => <li key={c.id}>{c.name}{c.isActive ? "" : " (inactiva)"}</li>)}</ul> : <p className={ui.muted}>Sin canchas.</p>}
           </section>
@@ -136,7 +145,7 @@ export default async function TenantAdminPage({ params }: { params: Promise<{ te
             )}
           </div>
         </section>
-      </main>
+      </div>
     </>
   );
 }

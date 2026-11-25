@@ -530,6 +530,12 @@ model Booking {
   paymentVerifiedBy  String?       @map("payment_verified_by") @db.Uuid
   /// Aviso al complejo de que el plazo de revisión está por vencer (una sola vez).
   reviewAlertedAt    DateTime?     @map("review_alerted_at") @db.Timestamptz(3)
+  /// Copia de los datos de cobro mostrados al jugador al reservar (no cambia si el complejo edita sus datos).
+  transferSnapshot   Json?         @map("transfer_snapshot")
+  /// Referencia bancaria con la que el complejo verificó el pago (única por complejo).
+  paymentReference   String?       @map("payment_reference")
+  /// Importe que el complejo indicó haber recibido al verificar (centavos).
+  paymentReceivedAmount Int?       @map("payment_received_amount")
   /// De dónde vino la reserva online: MARKETPLACE (catálogo de TURNUP) o DIRECT (enlace del complejo).
   origin             String?
   /// Optimistic locking para cambios de estado/reprogramación.

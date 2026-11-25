@@ -2,7 +2,10 @@ import { withPlayer } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { cancelBookingAsPlayer } from "@/modules/booking/public-access";
 
+import { readTransferSnapshot, type TransferSnapshot } from "@/modules/payments/transfers";
+
 export type PlayerBooking = {
+  transfer: TransferSnapshot | null;
   id: string;
   tenantId: string;
   code: string;
@@ -38,7 +41,7 @@ export async function listPlayerBookings(userId: string, now: Date = new Date())
         id: string; tenant_id: string; code: string; status: string; starts_at: Date; ends_at: Date; duration_minutes: number;
         price_amount: number | null; currency: string; tenant_slug: string; tenant_name: string; tenant_address: string | null;
         tenant_timezone: string; cancellation_minutes: number; court_name: string; sport: string; review_rating: number | null;
-        payment_status: string | null; amount_due: number | null; expires_at: Date | null; transfer_reported_at: Date | null;
+        payment_status: string | null; amount_due: number | null; expires_at: Date | null; transfer_reported_at: Date | null; transfer_snapshot: unknown;
       }[]
     >`SELECT * FROM app_player_bookings(200)`,
   );
@@ -67,6 +70,7 @@ export async function listPlayerBookings(userId: string, now: Date = new Date())
       reviewRating: r.review_rating,
       paymentStatus: r.payment_status,
       amountDue: r.amount_due,
+      transfer: readTransferSnapshot(r.transfer_snapshot),
       expiresAt: r.expires_at,
       transferReportedAt: r.transfer_reported_at,
       canCancel: active && now.getTime() < r.starts_at.getTime() - r.cancellation_minutes * 60_000,

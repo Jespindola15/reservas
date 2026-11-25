@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
-import { TopBar } from "@/components/TopBar";
+import { AuthLayout } from "@/components/AuthLayout";
 import ui from "@/components/ui.module.css";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
@@ -20,10 +20,7 @@ export default async function InvitationPage({ searchParams }: { searchParams: P
   }
   const user = await getCurrentUser();
   return (
-    <>
-      <TopBar />
-      <main className={`${ui.container} ${ui.page}`}>
-        <div className={ui.card} style={{ maxWidth: 480, margin: "3rem auto" }}>
+    <AuthLayout>
           <p className={ui.eyebrow}>Invitación al equipo</p>
           {!inv ? (
             <>
@@ -51,8 +48,6 @@ export default async function InvitationPage({ searchParams }: { searchParams: P
               )}
             </>
           )}
-        </div>
-      </main>
-    </>
+        </AuthLayout>
   );
 }

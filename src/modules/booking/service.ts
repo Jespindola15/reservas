@@ -4,7 +4,7 @@ import { isExclusionViolation, isRaised, isUniqueViolation } from "@/lib/db/erro
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { notifyTenant } from "@/modules/inbox/service";
-import { amountDueFor, loadTransferSettings, MAX_UNPAID_HOLDS, transferConfigured } from "@/modules/payments/transfers";
+import { amountDueFor, buildTransferSnapshot, loadTransferSettings, MAX_UNPAID_HOLDS, transferConfigured, type TransferSnapshot } from "@/modules/payments/transfers";
 import { enqueueBookingEvent } from "@/modules/notifications/outbox";
 import { customerContactKey, fingerprint, generateBookingCode } from "./code";
 import { resolvePrice } from "./pricing";
@@ -95,6 +95,7 @@ export type BookingSummary = {
   expiresAt: Date | null;
   paymentStatus: string | null;
   amountDue: number | null;
+  transferSnapshot: unknown;
 };
 
 export type CreateBookingResult = { booking: BookingSummary; replayed: boolean };
@@ -117,6 +118,7 @@ const SUMMARY_SELECT = {
   expiresAt: true,
   paymentStatus: true,
   amountDue: true,
+  transferSnapshot: true,
   requestFingerprint: true,
 } as const;
 
@@ -144,6 +146,8 @@ async function loadTenantSettings(tx: Tx, tenantId: string) {
       pendingExpirationMinutes: true,
       depositType: true,
       depositValue: true,
+      cancellationPolicy: true,
+      publicCancellationMinutes: true,
     },
   });
   if (!tenant) throw new AppError("TENANT_NOT_FOUND");
@@ -275,6 +279,11 @@ export async function createBooking(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await withTenant(ctx, async (tx) => {
+        // Una cuenta suspendida o eliminada no reserva como usuario autenticado (defensa además de la sesión).
+        if (input.playerUserId) {
+          const acct = await tx.user.findUnique({ where: { id: input.playerUserId }, select: { isDisabled: true } });
+          if (!acct || acct.isDisabled) throw new AppError("FORBIDDEN", { reason: "account_disabled" });
+        }
         const existing = await tx.booking.findUnique({
           where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } },
           select: SUMMARY_SELECT,
@@ -311,12 +320,17 @@ export async function createBooking(
         const needsTransfer = input.source === "ONLINE" && tenant.depositType !== "NONE";
         let amountDue: number | null = null;
         let transferWindow = 0;
+        let snapshot: TransferSnapshot | null = null;
         if (needsTransfer) {
           const settings = await loadTransferSettings(tx, ctx.tenantId);
           if (!transferConfigured(tenant.depositType, settings)) throw new AppError("PAYMENTS_NOT_CONFIGURED");
           amountDue = amountDueFor(price, tenant.depositType, tenant.depositValue);
           if (amountDue === null) throw new AppError("AMOUNT_UNAVAILABLE");
           transferWindow = settings!.transferWindowMinutes;
+          snapshot = buildTransferSnapshot(settings!, {
+            amountDue, currency: tenant.currency, depositType: tenant.depositType, depositValue: tenant.depositValue,
+            cancellationPolicy: tenant.cancellationPolicy, publicCancellationMinutes: tenant.publicCancellationMinutes, takenAt: now,
+          });
           // Nadie puede bloquear varios turnos sin pagar (por contacto o por cuenta).
           const holds = await tx.booking.count({
             where: {
@@ -353,6 +367,7 @@ export async function createBooking(
             paymentStatus: input.source === "ONLINE" ? (needsTransfer ? "AWAITING_TRANSFER" : "NOT_REQUIRED") : null,
             amountDue: needsTransfer ? amountDue : null,
             transferPayerName: needsTransfer ? (input.transferPayerName?.trim() || null) : null,
+            transferSnapshot: snapshot ?? undefined,
             currency: tenant.currency,
             customerName: input.customer.name.trim(),
             customerPhone: input.customer.phone.trim(),

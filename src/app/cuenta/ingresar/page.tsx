@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PlayerShell } from "@/components/player/PlayerShell";
+import styles from "@/components/player/player.module.css";
 import ui from "@/components/ui.module.css";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { LoginForm } from "../../login/LoginForm";
@@ -13,7 +14,7 @@ export default async function PlayerLogin({ searchParams }: { searchParams: Prom
   if (await getCurrentUser().catch(() => null)) redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/perfil");
   return (
     <PlayerShell user={null}>
-      <div className={ui.card} style={{ maxWidth: 440, margin: "1.5rem auto" }}>
+      <div className={`${styles.authWrap} ${styles.authCard}`}>
         <p className={ui.eyebrow}>Cuenta de jugador</p>
         <h1>Ingresar</h1>
         <p className={ui.muted}>Mirá tus turnos en todos los complejos, guardá favoritos y opiná sobre donde jugaste.</p>

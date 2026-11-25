@@ -123,13 +123,13 @@ export default async function MyBookings() {
         <section className={styles.section} aria-labelledby="transferir">
           <div className={styles.sectionHead}><h2 id="transferir">Pendientes de transferencia</h2></div>
           <p className={ui.faint}>Tu turno todavía no está confirmado. Realizá la transferencia e informá el pago para que el complejo pueda verificarlo.</p>
-          <ul className={styles.turns}>{awaiting.map((b) => <Turn key={b.id} b={b} transfer={transfers.get(b.tenantId) ?? null} />)}</ul>
+          <ul className={styles.turns}>{awaiting.map((b) => <Turn key={b.id} b={b} transfer={b.transfer ?? transfers.get(b.tenantId) ?? null} />)}</ul>
         </section>
       ) : null}
       {reviewing.length ? (
         <section className={styles.section} aria-labelledby="verificando">
           <div className={styles.sectionHead}><h2 id="verificando">Pendientes de verificación</h2></div>
-          <ul className={styles.turns}>{reviewing.map((b) => <Turn key={b.id} b={b} />)}</ul>
+          <ul className={styles.turns}>{reviewing.map((b) => <Turn key={b.id} b={b} transfer={b.transfer} />)}</ul>
         </section>
       ) : null}
       <section className={styles.section} aria-labelledby="proximos">

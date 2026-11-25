@@ -4,7 +4,7 @@ import { audit, type Actor } from "@/lib/audit";
 import { withTenant, type TenantContext, type Tx } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
 import { randomUUID } from "node:crypto";
-import { deleteObjectQuietly, getObjectStore, optimizeImage } from "@/lib/storage/images";
+import { deleteObjectQuietly, getObjectStore, optimizeImage, uploadStore } from "@/lib/storage/images";
 import { parseOrThrow } from "@/lib/validation";
 import { DateTime } from "luxon";
 import { dbDateToString, localMidnight, stringToDbDate, weekdayOf, windowsForDate } from "@/modules/booking/time";
@@ -410,7 +410,7 @@ export async function addCourtImage(ctx: TenantContext, courtId: string, bytes: 
     throw new AppError("IMAGE_INVALID");
   }
   if (img.data.length > MAX_IMAGE_BYTES) throw new AppError("IMAGE_INVALID");
-  const store = getObjectStore();
+  const store = uploadStore();
   const objectKey = store ? `tenants/${ctx.tenantId}/courts/${courtId}/${randomUUID()}.webp` : null;
   // Verificar permisos/límites ANTES de subir al bucket.
   await withTenant(ctx, async (tx) => {

@@ -51,11 +51,13 @@ export async function markPlayerInboxRead(userId: string) {
 /** Contadores livianos para la navegación del panel (avisos sin leer y transferencias por verificar). */
 export async function panelBadges(ctx: TenantContext) {
   return withTenant(ctx, async (tx) => {
-    const [unread, transfers] = await Promise.all([
+    const [unread, transfers, incidents] = await Promise.all([
       tx.inboxNotification.count({ where: { tenantId: ctx.tenantId, readAt: null } }),
       tx.booking.count({ where: { tenantId: ctx.tenantId, status: "PENDING", paymentStatus: "TRANSFER_REPORTED" } }),
+      // Incidencias de pago abiertas: siempre visibles hasta que el complejo las resuelva.
+      tx.paymentIncident.count({ where: { tenantId: ctx.tenantId, status: "OPEN" } }),
     ]);
-    return { unread, transfers };
+    return { unread, transfers, incidents };
   });
 }
 

@@ -43,11 +43,11 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
                   {series.map((s) => (
                     <tr key={s.id}>
                       <td><strong>{s.customer.name}</strong><div className={ui.faint}>{s.customer.phone}</div></td>
-                      <td>{DAYS[s.weekday]} {hhmm(s.startMinute)} · {s.durationMinutes} min</td>
-                      <td>{s.court.name}</td>
-                      <td>{s.startsOn.split("-").reverse().join("/")} → {s.endsOn.split("-").reverse().join("/")}</td>
-                      <td>{s.upcoming}</td>
-                      <td>
+                      <td data-label="Cuándo">{DAYS[s.weekday]} {hhmm(s.startMinute)} · {s.durationMinutes} min</td>
+                      <td data-label="Cancha">{s.court.name}</td>
+                      <td data-label="Vigencia">{s.startsOn.split("-").reverse().join("/")} → {s.endsOn.split("-").reverse().join("/")}</td>
+                      <td data-label="Próximas">{s.upcoming}</td>
+                      <td data-label="Acciones">
                         <ActionForm action={cancelSeriesAction.bind(null, slug, s.id)} submitLabel="Cancelar serie" variant="ghost" small quietSuccess confirm={{ title: `¿Cancelar el turno fijo de ${s.customer.name}?`, body: "Se cancelan todas las reservas futuras de la serie. Las pasadas no se tocan.", confirmLabel: "Sí, cancelar" }} />
                       </td>
                     </tr>

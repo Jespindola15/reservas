@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
+import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { whatsappLink } from "@/lib/contact/whatsapp";
 import { hasPermission } from "@/modules/access/authorize";
 import { formatMoney } from "@/modules/booking/pricing";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
-import { INCIDENT_KINDS, INCIDENT_LABEL, listTransferQueue, RESOLUTIONS, RESOLUTION_LABEL } from "@/modules/payments/transfers";
+import { INCIDENT_KINDS, INCIDENT_LABEL, listTransferQueue, readTransferSnapshot, RESOLUTIONS, RESOLUTION_LABEL } from "@/modules/payments/transfers";
 import { confirmTransferAction, openIncidentAction, rejectTransferAction, resolveIncidentAction, transferNoteAction } from "./actions";
 import styles from "./transfers.module.css";
 
@@ -66,12 +67,8 @@ export default async function TransfersPage({ params, searchParams }: { params: 
       </nav>
 
       {data.estado !== "incidencias" ? (
-        <form className={styles.filters} method="get">
-          <input type="hidden" name="estado" value={data.estado} />
-          <label className={ui.field}>
-            <span className={ui.label}>Buscar</span>
-            <input className={ui.input} name="q" defaultValue={sp.q ?? ""} placeholder="Nombre, titular, código o importe" maxLength={80} />
-          </label>
+        <FilterBar label="Buscar transferencias" search={{ name: "q", placeholder: "Jugador, titular, código, n.º de operación o importe", defaultValue: sp.q }}
+          hidden={{ estado: data.estado }} active={Boolean(sp.cancha || sp.fecha)} clearHref={`?estado=${data.estado}`}>
           <label className={ui.field}>
             <span className={ui.label}>Cancha</span>
             <select className={ui.select} name="cancha" defaultValue={sp.cancha ?? ""}>
@@ -83,11 +80,7 @@ export default async function TransfersPage({ params, searchParams }: { params: 
             <span className={ui.label}>Fecha del turno</span>
             <input className={ui.input} type="date" name="fecha" defaultValue={sp.fecha ?? ""} />
           </label>
-          <div className={ui.row} style={{ alignSelf: "end" }}>
-            <button className={ui.button} type="submit">Filtrar</button>
-            <Link className={`${ui.button} ${ui.buttonGhost}`} href={`?estado=${data.estado}`}>Limpiar</Link>
-          </div>
-        </form>
+        </FilterBar>
       ) : null}
 
       {data.estado !== "incidencias" ? (
@@ -117,6 +110,11 @@ export default async function TransfersPage({ params, searchParams }: { params: 
                     <dt>A transferir</dt><dd><strong>{formatMoney(b.amountDue, b.currency)}</strong> <span className={ui.faint}>de {formatMoney(b.priceAmount, b.currency)}{balance ? ` · saldo ${formatMoney(balance, b.currency)}` : ""}</span></dd>
                     <dt>Informada</dt><dd>{b.transferReportedAt ? formatLocalDateTime(b.transferReportedAt, tz) : <span className={ui.faint}>Todavía no</span>}</dd>
                     <dt>N.º de operación</dt><dd>{b.transferReference ?? <span className={ui.faint}>No informado</span>}</dd>
+                    {(() => {
+                      const snap = readTransferSnapshot(b.transferSnapshot);
+                      return snap ? (<><dt>Cuenta mostrada</dt><dd>{[snap.alias, snap.cbuCvu, snap.holderName].filter(Boolean).join(" · ")}</dd></>) : null;
+                    })()}
+                    {b.paymentReceivedAmount !== null ? (<><dt>Recibido</dt><dd>{formatMoney(b.paymentReceivedAmount, b.currency)}{b.paymentReference ? ` · ref. ${b.paymentReference}` : ""}</dd></>) : null}
                     {pending ? (<><dt>{b.paymentStatus === "TRANSFER_REPORTED" ? "Tiempo para revisar" : "Tiempo para transferir"}</dt><dd className={left === "vencido" ? ui.textDanger : undefined}>{left ?? "Sin límite"}</dd></>) : null}
                     {b.paymentVerifiedAt ? (<><dt>Verificado</dt><dd>{formatLocalDateTime(b.paymentVerifiedAt, tz)}</dd></>) : null}
                   </dl>
@@ -130,6 +128,14 @@ export default async function TransfersPage({ params, searchParams }: { params: 
                             <label className={ui.field}>
                               <span className={ui.label}>Importe recibido (pesos)</span>
                               <input className={ui.input} name="receivedAmount" inputMode="decimal" required defaultValue={pesos(b.amountDue)} pattern="\d{1,9}([.,]\d{1,2})?" />
+                            </label>
+                            <label className={ui.field}><span className={ui.label}>N.º de operación verificado (opcional)</span><input className={ui.input} name="reference" maxLength={60} defaultValue={b.transferReference ?? ""} autoComplete="off" /><span className={ui.hint}>Un mismo número no puede confirmar dos reservas.</span></label>
+                            <label className={ui.field}><span className={ui.label}>Si el importe no coincide</span>
+                              <select className={ui.select} name="difference" defaultValue="">
+                                <option value="">El importe coincide</option>
+                                <option value="ACCEPT_PARTIAL">Recibí menos: confirmar igual y registrar la diferencia</option>
+                                <option value="ACCEPT_OVERPAID">Recibí más: confirmar y devolver la diferencia</option>
+                              </select>
                             </label>
                             <label className={ui.field}><span className={ui.label}>Nota (opcional)</span><input className={ui.input} name="note" maxLength={300} /></label>
                           </ActionForm>

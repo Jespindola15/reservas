@@ -76,6 +76,39 @@ export type TransferInfo = {
   reviewWindowMinutes: number;
 };
 
+/**
+ * Copia inmutable de lo que vio el jugador al reservar. Se guarda en la reserva para que un cambio
+ * posterior de alias/CBU no altere solicitudes existentes. Solo la ven el titular de la reserva y el complejo.
+ */
+export type TransferSnapshot = TransferInfo & {
+  amountDue: number;
+  currency: string;
+  depositType: string;
+  depositValue: number;
+  cancellationPolicy: string | null;
+  publicCancellationMinutes: number;
+  takenAt: string;
+};
+
+export function buildTransferSnapshot(
+  s: TransferInfo,
+  x: { amountDue: number; currency: string; depositType: string; depositValue: number; cancellationPolicy: string | null; publicCancellationMinutes: number; takenAt: Date },
+): TransferSnapshot {
+  return {
+    alias: s.alias, cbuCvu: s.cbuCvu, holderName: s.holderName, bankName: s.bankName, instructions: s.instructions,
+    transferWindowMinutes: s.transferWindowMinutes, reviewWindowMinutes: s.reviewWindowMinutes,
+    amountDue: x.amountDue, currency: x.currency, depositType: x.depositType, depositValue: x.depositValue,
+    cancellationPolicy: x.cancellationPolicy, publicCancellationMinutes: x.publicCancellationMinutes, takenAt: x.takenAt.toISOString(),
+  };
+}
+
+/** Lee la copia guardada en la reserva (o null si es una reserva anterior a la Fase 5.1). */
+export function readTransferSnapshot(v: unknown): TransferSnapshot | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return typeof o.amountDue === "number" && typeof o.currency === "string" ? (o as unknown as TransferSnapshot) : null;
+}
+
 export function transferConfigured(depositType: string, s: TransferInfo | null): boolean {
   if (depositType === "NONE") return true;
   return Boolean(s && (s.alias || s.cbuCvu) && s.holderName);
@@ -130,6 +163,19 @@ export async function updatePaymentSettings(ctx: TenantContext, input: PaymentSe
       // Nunca el alias, CBU ni titular en el log: solo qué cambió.
       metadata: { changed, depositType: d.depositType, bankDataChanged: changed.some((k) => k === "alias" || k === "cbuCvu" || k === "holderName") },
     });
+    const bankDataChanged = changed.some((k) => k === "alias" || k === "cbuCvu" || k === "holderName");
+    if (bankDataChanged && before) {
+      const pending = await tx.booking.count({ where: { tenantId: ctx.tenantId, status: "PENDING", paymentStatus: { in: ["AWAITING_TRANSFER", "TRANSFER_REPORTED"] } } });
+      if (pending > 0) {
+        // Las solicitudes en curso conservan los datos ANTERIORES (copia en cada reserva): el complejo debe revisar ambas cuentas.
+        await notifyTenant(tx, ctx.tenantId, {
+          kind: "bank_data_changed",
+          title: "Cambiaste los datos bancarios con solicitudes pendientes",
+          body: `${pending} solicitud(es) en curso muestran los datos anteriores. Verificá esos pagos en la cuenta anterior.`,
+          link: "/transferencias?estado=pendientes",
+        });
+      }
+    }
   });
 }
 
@@ -144,10 +190,11 @@ type ReportResult = { status: "reported"; reviewUntil: Date } | { status: "late"
  * queda bloqueado durante el plazo de revisión del complejo (una sola vez: no se puede extender).
  * Si el plazo ya venció, se registra una incidencia para revisión manual y se avisa al complejo.
  */
-export async function reportTransferInTx(tx: Tx, tenantId: string, bookingId: string, reference: string | null, actor: Actor, now: Date): Promise<ReportResult> {
+export async function reportTransferInTx(tx: Tx, tenantId: string, bookingId: string, rawReference: string | null, actor: Actor, now: Date): Promise<ReportResult> {
+  const reference = normalizeReference(rawReference);
   const b = await tx.booking.findFirst({
     where: { id: bookingId, tenantId },
-    select: { id: true, code: true, status: true, paymentStatus: true, expiresAt: true, customerName: true, amountDue: true, transferReportedAt: true },
+    select: { id: true, code: true, status: true, paymentStatus: true, expiresAt: true, customerName: true, amountDue: true, transferReportedAt: true, transferSnapshot: true },
   });
   if (!b) throw new AppError("BOOKING_NOT_FOUND");
   if (b.paymentStatus === "TRANSFER_REPORTED") throw new AppError("ALREADY_PROCESSED");
@@ -156,7 +203,7 @@ export async function reportTransferInTx(tx: Tx, tenantId: string, bookingId: st
     // Tarde: nunca se reconfirma solo (el turno pudo asignarse a otra persona).
     const open = await tx.paymentIncident.count({ where: { tenantId, bookingId: b.id, kind: "LATE_TRANSFER", status: "OPEN" } });
     if (!open) {
-      await tx.paymentIncident.create({
+      await createIncident(tx, {
         data: { tenantId, bookingId: b.id, kind: "LATE_TRANSFER", amount: b.amountDue, notes: reference ? `Referencia informada: ${reference}` : null },
       });
       await notifyTenant(tx, tenantId, {
@@ -171,14 +218,28 @@ export async function reportTransferInTx(tx: Tx, tenantId: string, bookingId: st
     return { status: "late" };
   }
   if (b.status !== "PENDING" || b.paymentStatus !== "AWAITING_TRANSFER") throw new AppError("TRANSFER_NOT_PENDING");
-  const settings = await loadTransferSettings(tx, tenantId);
-  const reviewUntil = new Date(now.getTime() + (settings?.reviewWindowMinutes ?? 180) * 60_000);
+  // El plazo de revisión es el que regía al reservar (copia), no uno cambiado después.
+  const snap = readTransferSnapshot(b.transferSnapshot);
+  const settings = snap ? null : await loadTransferSettings(tx, tenantId);
+  const reviewUntil = new Date(now.getTime() + (snap?.reviewWindowMinutes ?? settings?.reviewWindowMinutes ?? 180) * 60_000);
   const res = await tx.booking.updateMany({
     where: { id: b.id, tenantId, status: "PENDING", paymentStatus: "AWAITING_TRANSFER", expiresAt: { gt: now } },
     data: { paymentStatus: "TRANSFER_REPORTED", transferReportedAt: now, transferReference: reference, expiresAt: reviewUntil, version: { increment: 1 } },
   });
   if (res.count !== 1) throw new AppError("ALREADY_PROCESSED");
+  // Mismo n.º de operación en otra reserva: se acepta el aviso, pero queda una incidencia para revisar.
+  if (reference) {
+    const dup = await tx.booking.findFirst({
+      where: { tenantId, id: { not: b.id }, OR: [{ transferReference: reference }, { paymentReference: reference }] },
+      select: { code: true },
+    });
+    if (dup) {
+      await createIncident(tx, { data: { tenantId, bookingId: b.id, kind: "DUPLICATE_REFERENCE", amount: b.amountDue, notes: `El n.º de operación ${reference} también figura en la reserva ${dup.code}.` } });
+      await notifyTenant(tx, tenantId, { kind: "payment_incident", title: `N.º de operación repetido · ${b.code}`, body: `El número informado ya figura en la reserva ${dup.code}. Verificá en tu banco antes de confirmar.`, link: "/transferencias?estado=incidencias", bookingId: b.id });
+    }
+  }
   await audit(tx, { tenantId, actor, action: "booking.transfer.reported", entityType: "booking", entityId: b.id, metadata: { hasReference: Boolean(reference), reviewUntil: reviewUntil.toISOString() } });
+  await enqueueBookingEvent(tx, tenantId, b.id, { type: "transfer_reported" });
   await notifyTenant(tx, tenantId, {
     kind: "transfer_reported",
     title: `Transferencia informada · ${b.code}`,
@@ -203,7 +264,17 @@ export const confirmSchema = z.object({
   /** Importe efectivamente recibido (pesos). */
   receivedAmount: z.string().trim().regex(/^\d{1,9}([.,]\d{1,2})?$/, "Importe inválido").transform((v) => Math.round(Number(v.replace(",", ".")) * 100)),
   note: z.string().trim().max(300).optional().transform(blank),
+  /** Referencia/n.º de operación verificado en el banco (si no se indica, se usa el que informó el jugador). */
+  reference: z.string().trim().max(60).optional().transform((v) => normalizeReference(v)),
+  /** Decisión explícita cuando el importe recibido no coincide con el esperado. */
+  difference: z.enum(["", "ACCEPT_PARTIAL", "ACCEPT_OVERPAID"]).optional().default(""),
 });
+
+/** Referencia bancaria comparable: mayúsculas, solo letras y números (sin espacios ni guiones). */
+export function normalizeReference(v: string | null | undefined): string | null {
+  const r = (v ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  return r.length >= 3 ? r.slice(0, 60) : null;
+}
 
 /**
  * El complejo confirma que RECIBIÓ la transferencia: la reserva pasa a confirmada, queda registrado
@@ -214,17 +285,43 @@ export async function confirmTransfer(ctx: TenantContext, input: z.input<typeof 
   return withTenant(ctx, async (tx) => {
     const b = await tx.booking.findFirst({
       where: { id: d.bookingId, tenantId: ctx.tenantId },
-      select: { id: true, code: true, status: true, paymentStatus: true, version: true, expiresAt: true, priceAmount: true, amountDue: true },
+      select: { id: true, code: true, status: true, paymentStatus: true, version: true, expiresAt: true, priceAmount: true, amountDue: true, transferReference: true },
     });
     if (!b) throw new AppError("BOOKING_NOT_FOUND");
     if (b.status !== "PENDING" || (b.paymentStatus !== "AWAITING_TRANSFER" && b.paymentStatus !== "TRANSFER_REPORTED")) throw new AppError("ALREADY_PROCESSED");
     if (b.version !== d.expectedVersion) throw new AppError("ALREADY_PROCESSED");
     if (b.expiresAt && b.expiresAt <= now) throw new AppError("BOOKING_EXPIRED");
+    // Importe distinto al esperado: requiere una decisión explícita y deja una incidencia para resolver.
+    const expected = b.amountDue ?? 0;
+    const diff = d.receivedAmount - expected;
+    if (diff < 0 && d.difference !== "ACCEPT_PARTIAL") throw new AppError("AMOUNT_MISMATCH", { expected, received: d.receivedAmount });
+    if (diff > 0 && d.difference !== "ACCEPT_OVERPAID") throw new AppError("AMOUNT_MISMATCH", { expected, received: d.receivedAmount });
+    // Una misma transferencia (referencia bancaria) no puede confirmar dos reservas.
+    const reference = d.reference ?? normalizeReference(b.transferReference);
+    if (reference) {
+      const used = await tx.booking.findFirst({ where: { tenantId: ctx.tenantId, paymentReference: reference, id: { not: b.id } }, select: { code: true } });
+      if (used) throw new AppError("REFERENCE_ALREADY_USED", { code: used.code });
+    }
     const res = await tx.booking.updateMany({
       where: { id: b.id, tenantId: ctx.tenantId, status: "PENDING", version: d.expectedVersion },
-      data: { status: "CONFIRMED", confirmedAt: now, expiresAt: null, paymentStatus: "VERIFIED", paymentVerifiedAt: now, paymentVerifiedBy: actor.userId, version: { increment: 1 } },
+      data: {
+        status: "CONFIRMED", confirmedAt: now, expiresAt: null, paymentStatus: "VERIFIED", paymentVerifiedAt: now, paymentVerifiedBy: actor.userId,
+        paymentReference: reference, paymentReceivedAmount: d.receivedAmount, version: { increment: 1 },
+      },
+    }).catch((e: unknown) => {
+      // Carrera: otra verificación usó la misma referencia al mismo tiempo (índice único).
+      if ((e as { code?: string }).code === "P2002") throw new AppError("REFERENCE_ALREADY_USED");
+      throw e;
     });
     if (res.count !== 1) throw new AppError("ALREADY_PROCESSED");
+    if (diff !== 0) {
+      await createIncident(tx, {
+        data: {
+          tenantId: ctx.tenantId, bookingId: b.id, kind: diff < 0 ? "UNDERPAID" : "OVERPAID", amount: Math.abs(diff), createdByUserId: actor.userId,
+          notes: diff < 0 ? `Se recibió menos de lo esperado (faltan ${Math.abs(diff) / 100}). ${d.note ?? ""}`.trim() : `Se recibió más de lo esperado (sobran ${diff / 100}): corresponde devolver la diferencia. ${d.note ?? ""}`.trim(),
+        },
+      });
+    }
     if (d.receivedAmount > 0) {
       await tx.bookingPayment.create({
         data: {
@@ -241,7 +338,7 @@ export async function confirmTransfer(ctx: TenantContext, input: z.input<typeof 
     }
     await audit(tx, {
       tenantId: ctx.tenantId, actor, action: "booking.transfer.verified", entityType: "booking", entityId: b.id,
-      metadata: { receivedAmount: d.receivedAmount, expectedAmount: b.amountDue },
+      metadata: { receivedAmount: d.receivedAmount, expectedAmount: b.amountDue, hasReference: Boolean(reference), difference: diff },
     });
     await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "confirmed" });
     await notifyBookingPlayer(tx, b.id, { kind: "booking_confirmed", title: "¡Reserva confirmada!", body: `El complejo verificó tu pago. Reserva ${b.code}.`, link: "/mis-turnos" });
@@ -270,7 +367,7 @@ export async function rejectTransfer(ctx: TenantContext, input: z.input<typeof r
     });
     if (res.count !== 1) throw new AppError("ALREADY_PROCESSED");
     if (d.moneyReceived) {
-      await tx.paymentIncident.create({
+      await createIncident(tx, {
         data: { tenantId: ctx.tenantId, bookingId: b.id, kind: "PAID_BUT_REJECTED", amount: d.receivedAmount, notes: d.reason, createdByUserId: actor.userId },
       });
     }
@@ -283,9 +380,19 @@ export async function rejectTransfer(ctx: TenantContext, input: z.input<typeof r
 
 // ---------------------------------------------------------------- Incidencias de pago
 
-export const INCIDENT_KINDS = ["LATE_TRANSFER", "PAID_BUT_EXPIRED", "PAID_BUT_REJECTED", "REFUND", "OTHER"] as const;
+/** Crea una incidencia y encola el aviso por email al complejo (deduplicado por incidencia). */
+async function createIncident(tx: Tx, args: { data: { tenantId: string; bookingId: string; kind: string; amount?: number | null; notes?: string | null; createdByUserId?: string | null } }) {
+  const i = await tx.paymentIncident.create({ data: args.data, select: { id: true } });
+  await enqueueBookingEvent(tx, args.data.tenantId, args.data.bookingId, { type: "payment_incident", incidentId: i.id, kind: args.data.kind });
+  return i;
+}
+
+export const INCIDENT_KINDS = ["LATE_TRANSFER", "PAID_BUT_EXPIRED", "PAID_BUT_REJECTED", "REFUND", "UNDERPAID", "OVERPAID", "DUPLICATE_REFERENCE", "OTHER"] as const;
 export const INCIDENT_LABEL: Record<(typeof INCIDENT_KINDS)[number], string> = {
   LATE_TRANSFER: "Transferencia fuera de plazo",
+  UNDERPAID: "Pago menor al esperado",
+  OVERPAID: "Pago mayor al esperado (devolver diferencia)",
+  DUPLICATE_REFERENCE: "N.º de operación repetido",
   PAID_BUT_EXPIRED: "Pago recibido de una reserva vencida",
   PAID_BUT_REJECTED: "Pago recibido de una reserva rechazada",
   REFUND: "Devolución",
@@ -306,7 +413,7 @@ export async function openIncident(ctx: TenantContext, input: { bookingId: strin
   return withTenant(ctx, async (tx) => {
     const b = await tx.booking.findFirst({ where: { id: d.bookingId, tenantId: ctx.tenantId }, select: { id: true, code: true } });
     if (!b) throw new AppError("BOOKING_NOT_FOUND");
-    const i = await tx.paymentIncident.create({ data: { tenantId: ctx.tenantId, bookingId: b.id, kind: d.kind, amount: d.amount, notes: d.notes, createdByUserId: actor.userId }, select: { id: true } });
+    const i = await createIncident(tx, { data: { tenantId: ctx.tenantId, bookingId: b.id, kind: d.kind, amount: d.amount, notes: d.notes, createdByUserId: actor.userId } });
     await notifyTenant(tx, ctx.tenantId, { kind: "payment_incident", title: `Incidencia de pago · ${b.code}`, body: INCIDENT_LABEL[d.kind], link: "/transferencias?estado=incidencias", bookingId: b.id });
     await audit(tx, { tenantId: ctx.tenantId, actor, action: "payment.incident.opened", entityType: "payment_incident", entityId: i.id, metadata: { kind: d.kind, amount: d.amount } });
     return i;
@@ -354,9 +461,10 @@ export async function listTransferQueue(ctx: TenantContext, f: { estado?: string
               ...(f.fecha && /^\d{4}-\d{2}-\d{2}$/.test(f.fecha)
                 ? { startsAt: { gte: new Date(`${f.fecha}T00:00:00-03:00`), lt: new Date(new Date(`${f.fecha}T00:00:00-03:00`).getTime() + 86_400_000) } }
                 : {}),
-              ...(amount !== null ? { amountDue: amount } : {}),
+              // Un número puede ser un importe o un n.º de operación: se buscan ambos.
+              ...(amount !== null ? { OR: [{ amountDue: amount }, { transferReference: { contains: q!.replace(/[^0-9]/g, "") } }, { paymentReference: { contains: q!.replace(/[^0-9]/g, "") } }] } : {}),
               ...(text
-                ? { OR: [{ customerName: { contains: text, mode: "insensitive" as const } }, { transferPayerName: { contains: text, mode: "insensitive" as const } }, { code: { contains: text.toUpperCase() } }] }
+                ? { OR: [{ customerName: { contains: text, mode: "insensitive" as const } }, { transferPayerName: { contains: text, mode: "insensitive" as const } }, { code: { contains: text.toUpperCase() } }, { transferReference: { contains: text.toUpperCase() } }, { paymentReference: { contains: text.toUpperCase() } }] }
                 : {}),
             },
             orderBy: [{ transferReportedAt: "asc" }, { createdAt: "asc" }],
@@ -364,7 +472,7 @@ export async function listTransferQueue(ctx: TenantContext, f: { estado?: string
             select: {
               id: true, code: true, status: true, version: true, paymentStatus: true, startsAt: true, endsAt: true, durationMinutes: true,
               priceAmount: true, amountDue: true, currency: true, customerName: true, customerPhone: true, transferPayerName: true,
-              transferReference: true, transferReportedAt: true, createdAt: true, expiresAt: true, paymentVerifiedAt: true,
+              transferReference: true, transferReportedAt: true, createdAt: true, expiresAt: true, paymentVerifiedAt: true, paymentReference: true, paymentReceivedAmount: true, transferSnapshot: true,
               court: { select: { name: true } },
             },
           });

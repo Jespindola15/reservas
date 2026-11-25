@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { TopBar } from "@/components/TopBar";
+import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
+import { ActionForm } from "@/components/ActionForm";
 import { listTenantsAdmin } from "@/modules/platform/tenants";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { AdminNav } from "../AdminNav";
+import { listTenantsForPlatform } from "@/modules/platform/service";
+import { assignAdminAction, createTenantAction } from "../actions";
 
 export const metadata: Metadata = { title: "Complejos · Superadministrador" };
 const SUB: Record<string, string> = { TRIAL: "Prueba", ACTIVE: "Activa", PAST_DUE: "Vencida (gracia)", SUSPENDED: "Suspendida", CANCELLED: "Cancelada" };
@@ -16,14 +17,13 @@ export default async function TenantsAdminPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const now = new Date();
   const data = await listTenantsAdmin(user, sp, now);
+  const tenants = await listTenantsForPlatform(user);
   const href = (p: number) => `?${new URLSearchParams(Object.entries({ ...sp, page: String(p) }).filter(([, v]) => v) as [string, string][]).toString()}`;
   return (
     <>
-      <TopBar><SignOutButton /></TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Complejos</h1><AdminNav current="/admin/complejos" /></div>
-        <form method="get" className={ui.grid3} aria-label="Filtros">
-          <label className={ui.field}><span className={ui.label}>Buscar</span><input className={ui.input} name="q" defaultValue={data.q} placeholder="Nombre, slug o ciudad" maxLength={80} /></label>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Plataforma</p><h1>Complejos</h1></div><a className={ui.button} href="#nuevo">Nuevo complejo</a></header>
+        <FilterBar label="Buscar complejos" search={{ name: "q", placeholder: "Nombre, slug o ciudad", defaultValue: data.q }} active={data.estado !== "todos" || Boolean(sp.orden && sp.orden !== "recientes")} clearHref="/admin/complejos">
           <label className={ui.field}><span className={ui.label}>Estado</span>
             <select className={ui.select} name="estado" defaultValue={data.estado}>
               <option value="todos">Todos</option><option value="activo">Activos</option><option value="suspendido">Suspendidos</option>
@@ -35,8 +35,7 @@ export default async function TenantsAdminPage({ searchParams }: { searchParams:
               <option value="recientes">Más recientes</option><option value="antiguos">Más antiguos</option><option value="nombre">Nombre</option>
             </select>
           </label>
-          <div className={ui.row} style={{ alignSelf: "end" }}><button className={ui.button} type="submit">Filtrar</button><Link className={`${ui.button} ${ui.buttonGhost}`} href="/admin/complejos">Limpiar</Link></div>
-        </form>
+        </FilterBar>
         <p className={ui.faint} style={{ margin: 0 }}>{data.total} complejo(s)</p>
         {data.rows.length === 0 ? <p className={ui.empty}>No hay complejos con esos filtros.</p> : (
           <div className={ui.tableWrap}>
@@ -69,7 +68,38 @@ export default async function TenantsAdminPage({ searchParams }: { searchParams:
             {data.page < data.pages ? <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={href(data.page + 1)}>Siguiente</Link> : null}
           </nav>
         ) : null}
-      </main>
+        <section aria-labelledby="alta" className={ui.section}>
+          <h2 id="alta">Alta de complejos y accesos</h2>
+        <div className={ui.grid2}>
+          <section className={ui.card} aria-labelledby="nuevo">
+            <h2 id="nuevo">Nuevo complejo</h2>
+            <ActionForm action={createTenantAction} submitLabel="Crear complejo" className={ui.stack}>
+              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} maxLength={100} /></label>
+              <label className={ui.field}><span className={ui.label}>Slug (URL)</span><input className={ui.input} name="slug" required pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]" placeholder="padel-centro" /></label>
+              <label className={ui.field}><span className={ui.label}>Zona horaria</span><input className={ui.input} name="timezone" defaultValue="America/Argentina/Buenos_Aires" /></label>
+            </ActionForm>
+          </section>
+          <section className={ui.card} aria-labelledby="asignar">
+            <h2 id="asignar">Asignar administrador</h2>
+            <ActionForm action={assignAdminAction} submitLabel="Asignar" className={ui.stack}>
+              <label className={ui.field}><span className={ui.label}>Complejo</span>
+                <select className={ui.select} name="tenantId" required>
+                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <label className={ui.field}><span className={ui.label}>Nombre</span><input className={ui.input} name="name" required minLength={2} /></label>
+              <label className={ui.field}><span className={ui.label}>Email</span><input className={ui.input} name="email" type="email" required /></label>
+              <label className={ui.field}><span className={ui.label}>Rol</span>
+                <select className={ui.select} name="role" defaultValue="OWNER">
+                  <option value="OWNER">Dueño</option><option value="ADMIN">Administrador</option><option value="STAFF">Personal</option>
+                </select>
+              </label>
+              <label className={ui.field}><span className={ui.label}>Contraseña inicial (solo usuarios nuevos, mín. 12)</span><input className={ui.input} name="initialPassword" type="password" minLength={12} autoComplete="new-password" /></label>
+            </ActionForm>
+          </section>
+        </div>
+        </section>
+      </div>
     </>
   );
 }

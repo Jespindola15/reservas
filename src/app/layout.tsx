@@ -1,6 +1,7 @@
 import { PwaClient } from "@/components/PwaClient";
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
+import "@fontsource-variable/inter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#05070d" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#09090b" };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Render dinámico en todas las páginas: requisito para el nonce de la CSP (src/proxy.ts).

@@ -22,6 +22,8 @@ export const E2E_ENV = {
   CRON_SECRET: "e2e-cron-secret-0123456789abcdef0123456789",
   SEED_SUPERADMIN_PASSWORD: "e2e-superadmin-pass-123",
   SEED_OWNER_PASSWORD: "e2e-owner-pass-1234",
+  // Las pruebas locales no tienen R2: se permite guardar imágenes en la base solo acá.
+  ALLOW_DB_IMAGES: "true",
 };
 
 export default defineConfig({

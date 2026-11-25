@@ -96,6 +96,12 @@ async function main() {
   console.log(`✓ Respaldo: rama ${backup.branch.name} (${backup.branch.id}).`);
   prisma(["migrate", "deploy"], prodOwner);
   await verify(PROD_BRANCH, "Producción", before);
+  // Las tablas nuevas también deben poder respaldarse (rol de solo lectura, ver docs/RESPALDOS.md).
+  const [{ exists }] = await q(prodOwner, "select exists(select 1 from pg_roles where rolname = 'turnup_backup') as exists");
+  if (exists) {
+    await q(prodOwner, "GRANT SELECT ON ALL TABLES IN SCHEMA public TO turnup_backup; GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO turnup_backup");
+    console.log("✓ Rol de respaldo: lectura de las tablas nuevas habilitada.");
+  }
   console.log("Listo. Si hiciera falta volver atrás: docs/ROLLBACK.md");
 }
 

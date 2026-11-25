@@ -4,6 +4,7 @@ import { unseal } from "@/lib/security/sealed";
 import { formatMoney } from "@/modules/booking/pricing";
 import { trackingPath } from "@/modules/booking/public-access";
 import { formatLocalDateTime, formatLocalTime } from "@/modules/booking/time";
+import { INCIDENT_LABEL, readTransferSnapshot } from "@/modules/payments/transfers";
 import { PLAYER_KINDS, OWNER_KINDS } from "./outbox";
 import { layout, type EmailContent } from "./templates";
 
@@ -132,7 +133,7 @@ export async function renderNotification(tx: Tx, n: RenderInput, now: Date): Pro
     where: { id: n.bookingId, tenantId: n.tenantId },
     select: {
       id: true, code: true, status: true, startsAt: true, endsAt: true, durationMinutes: true, priceAmount: true,
-      currency: true, customerName: true, expiresAt: true, playerUserId: true,
+      currency: true, customerName: true, expiresAt: true, playerUserId: true, paymentStatus: true, amountDue: true, transferSnapshot: true,
       court: { select: { name: true, sport: true } },
     },
   });
@@ -149,7 +150,8 @@ export async function renderNotification(tx: Tx, n: RenderInput, now: Date): Pro
     ["Complejo", tenant.name],
     ["Cancha", `${b.court.name} · ${SPORT[b.court.sport] ?? ""}`],
     ["Turno", when],
-    ["Precio", `${formatMoney(b.priceAmount, b.currency)} (se abona en el complejo)`],
+    ["Precio", b.amountDue ? formatMoney(b.priceAmount, b.currency) : `${formatMoney(b.priceAmount, b.currency)} (se abona en el complejo)`],
+    ...(b.amountDue ? ([[b.amountDue === b.priceAmount ? "A transferir" : "Seña a transferir", formatMoney(b.amountDue, b.currency)]] as [string, string][]) : []),
     ["Código", b.code],
   ];
   const link = { label: "Ver mi reserva", url: `${appUrl()}${trackingPath(tenant.slug, b.code, b.id)}` };
@@ -190,6 +192,35 @@ export async function renderNotification(tx: Tx, n: RenderInput, now: Date): Pro
     case "booking_expired":
       if (b.status !== "EXPIRED") return { send: false, reason: "stale" };
       return { send: true, content: layout({ preheader: "Tu solicitud venció", title: "Tu solicitud venció", intro: `${tenant.name} no la confirmó a tiempo y el turno se liberó.`, rows, cta: { label: "Buscar otro turno", url: `${appUrl()}/${tenant.slug}` }, footer }) };
+    case "booking_awaiting_transfer": {
+      if (b.status !== "PENDING" || b.paymentStatus !== "AWAITING_TRANSFER") return { send: false, reason: "stale" };
+      const snap = readTransferSnapshot(b.transferSnapshot);
+      const bank: [string, string][] = snap
+        ? ([
+            snap.alias ? ["Alias", snap.alias] : null,
+            snap.cbuCvu ? ["CBU / CVU", snap.cbuCvu] : null,
+            snap.holderName ? ["Titular", snap.holderName] : null,
+            snap.bankName ? ["Banco o billetera", snap.bankName] : null,
+          ].filter(Boolean) as [string, string][])
+        : [];
+      return {
+        send: true,
+        content: layout({
+          preheader: `Transferí ${b.amountDue ? formatMoney(b.amountDue, b.currency) : ""} para reservar`,
+          title: "Tu turno todavía no está confirmado",
+          intro: `${first}, realizá la transferencia e informá el pago desde tu enlace para que ${tenant.name} pueda verificarlo.`,
+          rows: [...rows, ...bank, ...(b.expiresAt ? ([["Transferí antes de", formatLocalDateTime(b.expiresAt, tz)]] as [string, string][]) : [])],
+          cta: { label: "Informar mi transferencia", url: link.url },
+          note: "La transferencia va directo a la cuenta del complejo. TURNUP no recibe ni retiene dinero. Si el plazo vence, el turno se libera.",
+          footer,
+        }),
+      };
+    }
+    case "owner_transfer_reported":
+      if (b.status !== "PENDING" || b.paymentStatus !== "TRANSFER_REPORTED") return { send: false, reason: "stale" };
+      return { send: true, content: layout({ preheader: `${b.customerName} informó una transferencia`, title: "Transferencia informada para verificar", intro: `${b.customerName} dice que ya transfirió. Revisá tu cuenta bancaria y confirmá o rechazá la reserva antes de que venza el plazo${b.expiresAt ? ` (${formatLocalDateTime(b.expiresAt, tz)})` : ""}. Informar no es lo mismo que pagar: verificá el dinero antes de confirmar.`, rows, cta: { label: "Verificar transferencia", url: `${appUrl()}/panel/${tenant.slug}/transferencias` }, footer: "TURNUP · Avisos al complejo. Configurables en Ajustes." }) };
+    case "owner_payment_incident":
+      return { send: true, content: layout({ preheader: `Incidencia de pago · ${b.code}`, title: "Incidencia de pago para resolver", intro: `Hay una incidencia de pago (${INCIDENT_LABEL[(p.kind as keyof typeof INCIDENT_LABEL)] ?? "otra"}) en la reserva de ${b.customerName}. Requiere que la resuelvas en el panel.`, rows, cta: { label: "Ver incidencias", url: `${appUrl()}/panel/${tenant.slug}/transferencias?estado=incidencias` }, footer: "TURNUP · Avisos al complejo. Configurables en Ajustes." }) };
     case "owner_new_request":
       return { send: true, content: layout({ preheader: `Nueva reserva de ${b.customerName}`, title: b.status === "PENDING" ? "Nueva solicitud para aprobar" : "Nueva reserva online", intro: b.status === "PENDING" ? `${b.customerName} pidió un turno. Aprobala antes de que venza.` : `${b.customerName} reservó un turno online.`, rows, cta: panelLink, footer: "TURNUP · Avisos al complejo. Configurables en Ajustes." }) };
     case "owner_booking_cancelled":

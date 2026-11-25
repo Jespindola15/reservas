@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MapPin, MessageCircle, Phone } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { ActionForm } from "@/components/ActionForm";
@@ -107,66 +108,22 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
                 <p className={styles.ratingLine}><strong>★ {ratingAvg.toFixed(1)}</strong> <a href="#opiniones">{reviews.length} {reviews.length === 1 ? "opinión verificada" : "opiniones verificadas"}</a></p>
               ) : null}
               <div className={styles.contactRow}>
-                {wa ? <a className={styles.contactLink} href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a> : null}
-                {maps ? <a className={styles.contactLink} href={maps} target="_blank" rel="noopener noreferrer">Cómo llegar</a> : null}
+                {wa ? <a className={styles.contactLink} href={wa} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} strokeWidth={1.75} aria-hidden />WhatsApp</a> : null}
+                {maps ? <a className={styles.contactLink} href={maps} target="_blank" rel="noopener noreferrer"><MapPin size={16} strokeWidth={1.75} aria-hidden />Cómo llegar</a> : null}
                 {tenant.instagram ? <a className={styles.contactLink} href={`https://instagram.com/${encodeURIComponent(tenant.instagram)}`} target="_blank" rel="noopener noreferrer">Instagram</a> : null}
                 {tenant.facebook ? <a className={styles.contactLink} href={`https://facebook.com/${encodeURIComponent(tenant.facebook)}`} target="_blank" rel="noopener noreferrer">Facebook</a> : null}
                 {tenant.website ? <a className={styles.contactLink} href={tenant.website} target="_blank" rel="noopener noreferrer nofollow">Sitio web</a> : null}
-                {tenant.contactPhone ? <a className={styles.contactLink} href={`tel:${tenant.contactPhone.replace(/[^0-9+]/g, "")}`}>Llamar</a> : null}
+                {tenant.contactPhone ? <a className={styles.contactLink} href={`tel:${tenant.contactPhone.replace(/[^0-9+]/g, "")}`}><Phone size={16} strokeWidth={1.75} aria-hidden />Llamar</a> : null}
                 {user ? (
                   <ActionForm action={toggleFavoriteAction.bind(null, tenant.slug)} submitLabel={isFavorite ? "♥ En favoritos" : "♡ Agregar a favoritos"} variant={isFavorite ? "primary" : "secondary"} small quietSuccess />
                 ) : null}
-                <a className={`${styles.contactLink} ${styles.bookLink}`} href="#reservar">Reservar</a>
               </div>
             </div>
           </div>
         </section>
         <div className={`${ui.container} ${ui.page}`}>
-          {tenant.services.length || courts.length ? (
-            <section className={styles.infoGrid} aria-label="Información del complejo">
-              {tenant.services.length ? (
-                <div className={ui.card}>
-                  <h2 className={styles.infoTitle}>Servicios</h2>
-                  <ul className={styles.services}>{tenant.services.map((s) => <li key={s}>{s}</li>)}</ul>
-                </div>
-              ) : null}
-              {courts.length ? (
-                <div className={ui.card}>
-                  <h2 className={styles.infoTitle}>Canchas y precios</h2>
-                  <ul className={styles.priceList}>
-                    {courts.map((c) => (
-                      <li key={c.id}>
-                        <span>
-                          {c.name} <span className={ui.faint}>· {SPORT[c.sport] ?? c.sport}</span>
-                          <span className={styles.courtFeatures}>
-                            {[c.surface ? SURFACE[c.surface] : null, c.covered === true ? "Techada" : c.covered === false ? "Descubierta" : null, c.dimensions, c.lighting ? "Iluminación" : null, c.capacity ? `${c.capacity} por equipo` : null].filter(Boolean).join(" · ")}
-                          </span>
-                        </span>
-                        <strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)} el turno` : "a confirmar"}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-          {deposit || tenant.cancellationPolicy ? (
-            <section className={ui.card} aria-labelledby="politicas" style={{ marginBottom: "1rem" }}>
-              <h2 id="politicas" className={styles.infoTitle}>Políticas de reserva</h2>
-              {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se transfiere directo a la cuenta del complejo; TURNUP no recibe ni retiene dinero."}</p> : null}
-              {tenant.cancellationPolicy ? <p className={ui.muted} style={{ margin: 0 }}>{tenant.cancellationPolicy}</p> : null}
-            </section>
-          ) : null}
-          {tenant.latitude !== null && tenant.longitude !== null ? (
-            <section aria-labelledby="ubicacion-titulo" className={ui.card} style={{ marginBottom: "1rem" }}>
-              <div className={ui.spread}>
-                <h2 id="ubicacion-titulo" className={styles.infoTitle} style={{ margin: 0 }}>Ubicación</h2>
-                {maps ? <a className={`${ui.button} ${ui.buttonSmall}`} href={maps} target="_blank" rel="noopener noreferrer">Cómo llegar</a> : null}
-              </div>
-              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.province].filter(Boolean).join(", ")}</p>
-              <MapView lat={tenant.latitude} lng={tenant.longitude} label={tenant.name} />
-            </section>
-          ) : null}
+          <div className={styles.fichaGrid}>
+            <div className={styles.bookCol}>
           <div id="reservar" />
           {courts.length === 0 ? (
             <p className={`${ui.alert} ${ui.alertWarn}`}>Todavía no hay canchas habilitadas para reservar.</p>
@@ -201,6 +158,55 @@ export default async function TenantPublicPage({ params, searchParams }: Props) 
               player={user ? { name: user.name, email: user.email } : null}
             />
           )}
+            </div>
+            <aside className={styles.side} aria-label="Información del complejo">
+          {tenant.services.length || courts.length ? (
+            <section className={styles.infoGrid} aria-label="Información del complejo">
+              {tenant.services.length ? (
+                <div className={ui.card}>
+                  <h2 className={styles.infoTitle}>Servicios</h2>
+                  <ul className={styles.services}>{tenant.services.map((s) => <li key={s}>{s}</li>)}</ul>
+                </div>
+              ) : null}
+              {courts.length ? (
+                <div className={ui.card}>
+                  <h2 className={styles.infoTitle}>Canchas y precios</h2>
+                  <ul className={styles.priceList}>
+                    {courts.map((c) => (
+                      <li key={c.id}>
+                        <span>
+                          {c.name} <span className={ui.faint}>· {SPORT[c.sport] ?? c.sport}</span>
+                          <span className={styles.courtFeatures}>
+                            {[c.surface ? SURFACE[c.surface] : null, c.covered === true ? "Techada" : c.covered === false ? "Descubierta" : null, c.dimensions, c.lighting ? "Iluminación" : null, c.capacity ? `${c.capacity} por equipo` : null].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        <strong>{c.fromPrice !== null ? `desde ${formatMoney(c.fromPrice, tenant.currency)} el turno` : "a confirmar"}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          {deposit || tenant.cancellationPolicy ? (
+            <section className={ui.card} aria-labelledby="politicas" >
+              <h2 id="politicas" className={styles.infoTitle}>Políticas de reserva</h2>
+              {deposit ? <p style={{ margin: "0 0 0.4rem" }}><strong>{deposit}</strong> {tenant.depositNote ?? "Se transfiere directo a la cuenta del complejo; TURNUP no recibe ni retiene dinero."}</p> : null}
+              {tenant.cancellationPolicy ? <p className={ui.muted} style={{ margin: 0 }}>{tenant.cancellationPolicy}</p> : null}
+            </section>
+          ) : null}
+          {tenant.latitude !== null && tenant.longitude !== null ? (
+            <section aria-labelledby="ubicacion-titulo" className={ui.card} >
+              <div className={ui.spread}>
+                <h2 id="ubicacion-titulo" className={styles.infoTitle} style={{ margin: 0 }}>Ubicación</h2>
+                {maps ? <a className={`${ui.button} ${ui.buttonSmall}`} href={maps} target="_blank" rel="noopener noreferrer">Cómo llegar</a> : null}
+              </div>
+              <p className={ui.muted}>{[tenant.address, tenant.city, tenant.province].filter(Boolean).join(", ")}</p>
+              <MapView lat={tenant.latitude} lng={tenant.longitude} label={tenant.name} />
+            </section>
+          ) : null}
+            </aside>
+          </div>
           {galleryIds.length ? (
             <section aria-labelledby="galeria" style={{ marginTop: "1.5rem" }}>
               <h2 id="galeria" className={styles.infoTitle}>Fotos</h2>

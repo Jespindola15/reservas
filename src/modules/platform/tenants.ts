@@ -58,7 +58,7 @@ export async function getTenantAdmin(user: AuthUser, tenantId: string, now: Date
     const t = await tx.tenant.findUnique({
       where: { id: tenantId },
       select: {
-        id: true, slug: true, name: true, city: true, province: true, address: true, contactPhone: true, status: true, suspendedReason: true,
+        id: true, slug: true, name: true, city: true, province: true, address: true, contactPhone: true, contactEmail: true, status: true, suspendedReason: true,
         archivedAt: true, createdAt: true, depositType: true, publicListed: true,
         courts: { select: { id: true, name: true, sport: true, isActive: true }, orderBy: { sortOrder: "asc" } },
         memberships: { select: { id: true, role: true, isActive: true, user: { select: { id: true, name: true, email: true, isDisabled: true } } }, orderBy: { createdAt: "asc" } },
@@ -78,14 +78,24 @@ export async function getTenantAdmin(user: AuthUser, tenantId: string, now: Date
   });
 }
 
-export async function renameTenant(user: AuthUser, tenantId: string, name: string) {
+const basicsSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  address: z.string().trim().max(160).optional().transform((v) => v || null),
+  city: z.string().trim().max(80).optional().transform((v) => v || null),
+  province: z.string().trim().max(80).optional().transform((v) => v || null),
+  contactPhone: z.string().trim().max(30).regex(/^[0-9+()\s.-]*$/, "Teléfono inválido").optional().transform((v) => v || null),
+  contactEmail: z.union([z.literal(""), z.email().max(254)]).optional().transform((v) => v || null),
+});
+
+/** Edición de los datos básicos del complejo (el slug no cambia: rompería enlaces ya compartidos). */
+export async function updateTenantBasics(user: AuthUser, tenantId: string, input: z.input<typeof basicsSchema>) {
   const actor = assertSuperadmin(user);
   parseOrThrow(z.uuid(), tenantId);
-  const n = parseOrThrow(z.string().trim().min(2).max(80), name);
+  const d = parseOrThrow(basicsSchema, input);
   return withPlatformAdmin(user.id, async (tx) => {
-    const res = await tx.tenant.updateMany({ where: { id: tenantId }, data: { name: n } });
+    const res = await tx.tenant.updateMany({ where: { id: tenantId }, data: d });
     if (res.count !== 1) throw new AppError("TENANT_NOT_FOUND");
-    await audit(tx, { tenantId, actor, action: "platform.tenant.renamed", entityType: "tenant", entityId: tenantId, metadata: { name: n } });
+    await audit(tx, { tenantId, actor, action: "platform.tenant.updated", entityType: "tenant", entityId: tenantId, metadata: { fields: Object.keys(d) } });
   });
 }
 

@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireUserPage } from "@/lib/auth/dal";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { AdminNav } from "../AdminNav";
 import { TwoFactorSetup } from "./TwoFactorSetup";
 
 export const metadata: Metadata = { title: "Seguridad", robots: { index: false, follow: false } };
@@ -15,12 +11,8 @@ export default async function SecurityPage() {
   if (user.platformRole !== "SUPERADMIN") notFound();
   return (
     <>
-      <TopBar>
-        <Link href="/panel" className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Mis complejos</Link>
-        <SignOutButton />
-      </TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Seguridad de tu cuenta</h1>{user.twoFactorEnabled ? <AdminNav current="/admin/seguridad" /> : null}</div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Tu cuenta</p><h1>Seguridad de tu cuenta</h1></div></header>
         {user.twoFactorEnabled ? (
           <section className={ui.card}>
             <h2>Verificación en dos pasos: activa</h2>
@@ -38,7 +30,7 @@ export default async function SecurityPage() {
             <TwoFactorSetup />
           </section>
         )}
-      </main>
+      </div>
     </>
   );
 }

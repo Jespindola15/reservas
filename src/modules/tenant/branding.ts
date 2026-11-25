@@ -5,7 +5,7 @@ import { audit, type Actor } from "@/lib/audit";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { AppError } from "@/lib/errors";
-import { deleteObjectQuietly, getObjectStore } from "@/lib/storage/images";
+import { deleteObjectQuietly, getObjectStore, uploadStore } from "@/lib/storage/images";
 import { parseOrThrow } from "@/lib/validation";
 import { sniffImageType } from "@/modules/courts/service";
 import { AR_PROVINCES } from "@/lib/geo";
@@ -137,7 +137,7 @@ export async function addTenantAsset(ctx: TenantContext, kind: AssetKind, bytes:
     const n = await withTenant(ctx, (tx) => tx.tenantAsset.count({ where: { tenantId: ctx.tenantId, kind } }));
     if (n >= MAX_GALLERY) throw new AppError("LIMIT_REACHED", { resource: "gallery", max: MAX_GALLERY });
   }
-  const store = getObjectStore();
+  const store = uploadStore();
   const objectKey = store ? `tenants/${ctx.tenantId}/brand/${kind.toLowerCase()}/${randomUUID()}.webp` : null;
   if (store && objectKey) await store.put(objectKey, img.data, img.contentType);
   const replaced: string[] = [];

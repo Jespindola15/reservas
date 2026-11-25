@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { AwsClient } from "aws4fetch";
 import { getEnv } from "@/lib/env";
+import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
 /**
@@ -72,6 +73,21 @@ export function getObjectStore(): ObjectStore | null {
       ? new S3ObjectStore(env.S3_ENDPOINT, env.S3_BUCKET, env.S3_ACCESS_KEY_ID, env.S3_SECRET_ACCESS_KEY, env.S3_REGION)
       : null;
   return store;
+}
+
+/**
+ * Store para SUBIR imágenes nuevas. En producción las imágenes van solo a R2: si no está configurado,
+ * la subida se rechaza con un error claro (nunca se guardan bytes en PostgreSQL como alternativa
+ * silenciosa). Si R2 falla al subir, la operación falla y no se borra la imagen anterior.
+ */
+export function uploadStore(): ObjectStore | null {
+  const s = getObjectStore();
+  if (s) return s;
+  const env = getEnv();
+  if (env.NODE_ENV === "production" && env.ALLOW_DB_IMAGES !== "true") {
+    throw new AppError("IMAGE_STORAGE_REQUIRED");
+  }
+  return null;
 }
 
 /** Para pruebas: inyectar un store en memoria. */

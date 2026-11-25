@@ -9,8 +9,9 @@ export const PLAYER_KINDS = [
   "booking_rescheduled",
   "booking_reminder",
   "booking_expired",
+  "booking_awaiting_transfer",
 ] as const;
-export const OWNER_KINDS = ["owner_new_request", "owner_booking_cancelled", "owner_digest"] as const;
+export const OWNER_KINDS = ["owner_new_request", "owner_booking_cancelled", "owner_digest", "owner_transfer_reported", "owner_payment_incident"] as const;
 export const ACCOUNT_KINDS = ["password_reset", "team_invitation", "tenant_welcome"] as const;
 export type NotificationKind = (typeof PLAYER_KINDS)[number] | (typeof OWNER_KINDS)[number] | (typeof ACCOUNT_KINDS)[number];
 
@@ -51,7 +52,9 @@ export type BookingEvent =
   | { type: "confirmed" }
   | { type: "cancelled"; by: "complex" | "player"; reason?: string | null }
   | { type: "rejected"; reason?: string | null }
-  | { type: "rescheduled"; fromStartsAt: string; fromCourtName: string };
+  | { type: "rescheduled"; fromStartsAt: string; fromCourtName: string }
+  | { type: "transfer_reported" }
+  | { type: "payment_incident"; incidentId: string; kind: string };
 
 /**
  * Traduce un evento de reserva en los avisos correspondientes (jugador y/o
@@ -67,6 +70,7 @@ export async function enqueueBookingEvent(tx: Tx, tenantId: string, bookingId: s
       status: true,
       source: true,
       version: true,
+      paymentStatus: true,
       customerEmail: true,
       tenant: { select: { ownerNotificationEmail: true, contactEmail: true } },
     },
@@ -81,7 +85,7 @@ export async function enqueueBookingEvent(tx: Tx, tenantId: string, bookingId: s
       if (player) {
         await enqueue(tx, {
           tenantId,
-          kind: b.status === "PENDING" ? "booking_requested" : "booking_confirmed",
+          kind: b.paymentStatus === "AWAITING_TRANSFER" ? "booking_awaiting_transfer" : b.status === "PENDING" ? "booking_requested" : "booking_confirmed",
           recipient: player,
           dedupeKey: key(b.status === "PENDING" ? "requested" : `confirmed:v${b.version}`),
           bookingId: b.id,
@@ -109,6 +113,12 @@ export async function enqueueBookingEvent(tx: Tx, tenantId: string, bookingId: s
       if (owner && event.type === "cancelled" && event.by === "player") {
         await enqueue(tx, { tenantId, kind: "owner_booking_cancelled", recipient: owner, dedupeKey: key("owner_cancelled"), bookingId: b.id });
       }
+      return;
+    case "transfer_reported":
+      if (owner) await enqueue(tx, { tenantId, kind: "owner_transfer_reported", recipient: owner, dedupeKey: key("owner_transfer_reported"), bookingId: b.id });
+      return;
+    case "payment_incident":
+      if (owner) await enqueue(tx, { tenantId, kind: "owner_payment_incident", recipient: owner, dedupeKey: `incident:${event.incidentId}`, bookingId: b.id, payload: { kind: event.kind } });
       return;
     case "rescheduled":
       if (player) {

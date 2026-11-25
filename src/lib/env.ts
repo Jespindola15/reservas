@@ -45,6 +45,8 @@ const schema = z
     ALERT_WEBHOOK_URL: z.union([z.literal(""), z.url()]).default(""),
     /** Almacenamiento de imágenes: database (actual) u object (S3/R2). */
     IMAGE_STORAGE: z.enum(["database", "object"]).default("database"),
+    /** Solo desarrollo/pruebas: permite guardar imágenes nuevas en PostgreSQL en producción. Nunca en el sitio real. */
+    ALLOW_DB_IMAGES: z.enum(["true", "false"]).default("false"),
     S3_ENDPOINT: z.string().default(""),
     S3_BUCKET: z.string().default(""),
     S3_REGION: z.string().default("auto"),

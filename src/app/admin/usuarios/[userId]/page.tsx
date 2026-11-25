@@ -2,13 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { anonymizeImpact, getUserDetail } from "@/modules/platform/users";
-import { SignOutButton } from "../../../panel/SignOutButton";
-import { AdminNav } from "../../AdminNav";
 import { anonymizeUserAction, passwordRecoveryAction, reactivateUserAction, renameUserAction, revokeSessionsAction, suspendUserAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Usuario · Superadministrador" };
@@ -31,9 +28,8 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
 
   return (
     <>
-      <TopBar><SignOutButton /></TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>{u.name}</h1><AdminNav current="/admin/usuarios" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Usuario</p><h1>{u.name}</h1></div></header>
         <Link href="/admin/usuarios" className={ui.faint}>← Volver a usuarios</Link>
         <div className={ui.grid2} style={{ alignItems: "start" }}>
           <section className={ui.card} aria-labelledby="datos">
@@ -110,7 +106,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
             </div>
           </section>
         ) : self ? <p className={ui.faint}>No podés suspender ni eliminar tu propia cuenta desde acá.</p> : null}
-      </main>
+      </div>
     </>
   );
 }

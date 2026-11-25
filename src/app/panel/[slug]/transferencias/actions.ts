@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { dispatchEmailsSoon } from "@/modules/notifications/dispatch";
 import { runAction, type ActionResult } from "@/lib/actions";
 import { requireTenant } from "@/lib/auth/dal";
 import { setBookingInternalNotes } from "@/modules/booking/service";
@@ -25,8 +26,9 @@ export async function confirmTransferAction(slug: string, bookingId: string, ver
   let done: string | null = null;
   const res = await runAction("transfer.confirm", async () => {
     const { ctx, user } = await requireTenant(slug, "payments.verify");
-    const r = await confirmTransfer(ctx, { bookingId, expectedVersion: version, receivedAmount: str(fd, "receivedAmount") ?? "", note: str(fd, "note") }, { type: "USER", userId: user.id });
+    const r = await confirmTransfer(ctx, { bookingId, expectedVersion: version, receivedAmount: str(fd, "receivedAmount") ?? "", note: str(fd, "note"), reference: str(fd, "reference"), difference: (str(fd, "difference") ?? "") as "" }, { type: "USER", userId: user.id });
     refresh(slug);
+    dispatchEmailsSoon();
     done = r.code;
     return `Pago verificado. La reserva ${r.code} quedó confirmada.`;
   });
@@ -45,6 +47,7 @@ export async function rejectTransferAction(slug: string, bookingId: string, vers
       { type: "USER", userId: user.id },
     );
     refresh(slug);
+    dispatchEmailsSoon();
     done = r.code;
     return `Reserva ${r.code} rechazada. El horario quedó libre.`;
   });
@@ -57,6 +60,7 @@ export async function openIncidentAction(slug: string, bookingId: string, _p: Ac
     const { ctx, user } = await requireTenant(slug, "payments.verify");
     await openIncident(ctx, { bookingId, kind: str(fd, "kind") ?? "", amount: str(fd, "amount"), notes: str(fd, "notes") }, { type: "USER", userId: user.id });
     refresh(slug);
+    dispatchEmailsSoon();
     return "Incidencia registrada.";
   });
 }

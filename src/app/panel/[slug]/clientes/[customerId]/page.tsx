@@ -78,9 +78,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ slug:
                   {bookings.map((b) => (
                     <tr key={b.id}>
                       <td><Link href={`/panel/${slug}/reservas/${b.id}`}>{formatLocalDateTime(b.startsAt, tz)}</Link><div className={ui.faint}>{b.durationMinutes} min · {b.code}</div></td>
-                      <td>{b.court.name}</td>
-                      <td>{formatMoney(b.priceAmount, b.currency)}</td>
-                      <td><span className={`${ui.badge} ${ui[`badge${b.status}`] ?? ""}`}>{STATUS_LABEL[b.status]}</span>{b.cancelReason ? <div className={ui.faint}>{b.cancelReason}</div> : null}</td>
+                      <td data-label="Cancha">{b.court.name}</td>
+                      <td data-label="Importe">{formatMoney(b.priceAmount, b.currency)}</td>
+                      <td data-label="Estado"><span className={`${ui.badge} ${ui[`badge${b.status}`] ?? ""}`}>{STATUS_LABEL[b.status]}</span>{b.cancelReason ? <div className={ui.faint}>{b.cancelReason}</div> : null}</td>
                     </tr>
                   ))}
                 </tbody>

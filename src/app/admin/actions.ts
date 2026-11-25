@@ -194,13 +194,14 @@ export async function renameUserAction(userId: string, _p: ActionResult, fd: For
 
 // ---------------------------------------------------------------- Complejos (ficha)
 
-export async function renameTenantAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
-  return runAction("platform.tenant.rename", async () => {
+export async function updateTenantBasicsAction(tenantId: string, _p: ActionResult, fd: FormData): Promise<ActionResult> {
+  return runAction("platform.tenant.update", async () => {
     const user = await requireSuperadmin();
-    const { renameTenant } = await import("@/modules/platform/tenants");
-    await renameTenant(user, tenantId, String(fd.get("name") ?? ""));
+    const { updateTenantBasics } = await import("@/modules/platform/tenants");
+    const v = (k: string) => String(fd.get(k) ?? "");
+    await updateTenantBasics(user, tenantId, { name: v("name"), address: v("address"), city: v("city"), province: v("province"), contactPhone: v("contactPhone"), contactEmail: v("contactEmail") });
     revalidatePath("/admin", "layout");
-    return "Nombre actualizado.";
+    return "Datos del complejo actualizados.";
   });
 }
 

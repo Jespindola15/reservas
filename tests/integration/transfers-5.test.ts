@@ -104,7 +104,7 @@ describe("flujo de transferencia", () => {
     expect(r.status).toBe("reported");
     await expect(reportTransferByLink(f.tenant.slug, booking.code, token, null, publicActor, new Date(NOW.getTime() + 11 * 60_000))).rejects.toMatchObject({ code: "ALREADY_PROCESSED" });
     const row = await owner.booking.findUniqueOrThrow({ where: { id: booking.id } });
-    expect(row).toMatchObject({ paymentStatus: "TRANSFER_REPORTED", transferReference: "OP-12345", transferPayerName: "Marta Gómez", status: "PENDING" });
+    expect(row).toMatchObject({ paymentStatus: "TRANSFER_REPORTED", transferReference: "OP12345", transferPayerName: "Marta Gómez", status: "PENDING" });
     expect(row.expiresAt!.getTime()).toBe(NOW.getTime() + 10 * 60_000 + 120 * 60_000);
 
     const q = await listTransferQueue(f.ctx, { estado: "informadas", q: "marta" }, NOW);

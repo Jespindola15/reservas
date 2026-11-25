@@ -40,11 +40,11 @@ export default async function CustomersPage({ params, searchParams }: { params: 
           <a className={`${ui.button} ${ui.buttonSecondary}`} href={`/panel/${slug}/exportar?tipo=clientes`} download>Exportar CSV</a>
         ) : null}
       </header>
-      <form className={`${ui.card} ${ui.row}`} style={{ marginBottom: "1rem" }} role="search">
+      <form className={ui.toolbar} role="search">
         <label className="sr-only" htmlFor="q">Buscar cliente</label>
-        <input id="q" className={ui.input} name="q" defaultValue={sp.q} maxLength={80} placeholder="Buscar por nombre, teléfono o email" style={{ flex: 1, minWidth: 200 }} />
+        <input id="q" className={ui.input} name="q" defaultValue={sp.q} maxLength={80} placeholder="Buscar por nombre, teléfono o email" style={{ flex: "2 1 220px", width: "auto" }} />
         <label className="sr-only" htmlFor="filtro">Filtrar clientes</label>
-        <select id="filtro" name="filtro" className={ui.select} defaultValue={filter} style={{ width: "auto" }}>
+        <select id="filtro" name="filtro" className={ui.select} defaultValue={filter} style={{ flex: "1 1 200px", width: "auto", maxWidth: "100%" }}>
           <option value="all">Todos</option>
           <option value="frequent">Frecuentes (4+ visitas en 90 días)</option>
           <option value="inactive">Sin turnos hace 60 días</option>
@@ -68,16 +68,16 @@ export default async function CustomersPage({ params, searchParams }: { params: 
                 {data.rows.map((c) => (
                   <tr key={c.id}>
                     <td><Link href={`/panel/${slug}/clientes/${c.id}`}>{c.name}</Link></td>
-                    <td>
+                    <td data-label="Contacto">
                       {c.phone ?? "—"}
                       {c.phone && whatsappLink(c.phone) ? <> · <a href={whatsappLink(c.phone)!} target="_blank" rel="noopener noreferrer">WhatsApp</a></> : null}
                       <div className={ui.faint}>{c.email ?? ""}</div>
                     </td>
-                    <td>{c.bookings}</td>
-                    <td>{c.visits}</td>
-                    <td>{c.cancellations > 0 ? <span className={`${ui.badge} ${ui.badgeCANCELLED}`}>{c.cancellations}</span> : "0"}</td>
-                    <td>{c.lastVisitAt ? formatLocalDateTime(c.lastVisitAt, access.tenant.timezone) : "—"}</td>
-                    <td>{formatMoney(c.totalPaid, cur)}</td>
+                    <td data-label="Reservas">{c.bookings}</td>
+                    <td data-label="Visitas">{c.visits}</td>
+                    <td data-label="Cancel./ausencias">{c.cancellations > 0 ? <span className={`${ui.badge} ${ui.badgeCANCELLED}`}>{c.cancellations}</span> : "0"}</td>
+                    <td data-label="Última visita">{c.lastVisitAt ? formatLocalDateTime(c.lastVisitAt, access.tenant.timezone) : "—"}</td>
+                    <td data-label="Abonado">{formatMoney(c.totalPaid, cur)}</td>
                   </tr>
                 ))}
               </tbody>

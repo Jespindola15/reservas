@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CalendarPlus, Search } from "lucide-react";
+import { StatusBadge } from "@/components/status/StatusBadge";
 import { ComplexCard, SPORT_LABEL } from "@/components/player/ComplexCard";
 import { PlayerShell } from "@/components/player/PlayerShell";
 import styles from "@/components/player/player.module.css";
@@ -34,17 +36,19 @@ export default async function Home() {
 
   return (
     <PlayerShell user={user}>
-      <p className={ui.eyebrow}>Fútbol · Pádel</p>
       <h1 className={styles.hello}>{user ? `Hola, ${user.name.split(" ")[0]}` : "¿Dónde jugamos hoy?"}</h1>
       <p className={ui.muted} style={{ margin: 0 }}>Encontrá cancha, mirá los horarios libres y reservá en segundos.</p>
 
       <form action="/explorar" method="get" className={styles.searchRow} role="search" aria-label="Buscar complejos">
-        <label className="sr-only" htmlFor="q">Buscar complejo</label>
-        <input id="q" name="q" className={ui.input} placeholder="Buscar complejo o zona" maxLength={80} style={{ flex: 2 }} />
+        <div className={styles.searchBox}>
+          <Search size={18} strokeWidth={1.75} aria-hidden />
+          <label className="sr-only" htmlFor="q">Buscar complejo</label>
+          <input id="q" name="q" className={ui.input} placeholder="Buscar complejo o zona" maxLength={80} />
+        </div>
         {cities.length > 1 ? (
           <>
             <label className="sr-only" htmlFor="ciudad">Ciudad</label>
-            <select id="ciudad" name="ciudad" className={ui.select} defaultValue={city && cities.includes(city) ? city : ""} style={{ flex: 1 }}>
+            <select id="ciudad" name="ciudad" className={ui.select} defaultValue={city && cities.includes(city) ? city : ""}>
               <option value="">Todas las ciudades</option>
               {cities.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -71,14 +75,14 @@ export default async function Home() {
               <span className={styles.meta} style={{ display: "block" }}>
                 {next.startsAt.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: next.tenantTimezone })} hs · {next.courtName} · {SPORT_LABEL[next.sport] ?? next.sport}
               </span>
-              {next.status === "PENDING" ? <span className={styles.badge}>Esperando confirmación</span> : null}
+              <span style={{ display: "block", marginTop: 6 }}><StatusBadge status={next.status} paymentStatus={next.paymentStatus} /></span>
             </span>
           </Link>
         </section>
       ) : null}
 
       <section className={styles.section}>
-        <Link href="/explorar" className={styles.cta}>Reservar una cancha</Link>
+        <Link href="/explorar" className={styles.cta}><CalendarPlus size={20} strokeWidth={1.75} aria-hidden />Reservar una cancha</Link>
       </section>
 
       {favorites.length ? (

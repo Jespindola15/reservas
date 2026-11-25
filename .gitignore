@@ -51,3 +51,6 @@ next-env.d.ts
 
 # Claves temporales para la puesta en marcha (NUNCA subir)
 .turnup-secrets/
+
+# Capturas de auditoría visual (se entregan aparte, no se versionan)
+/capturas

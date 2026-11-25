@@ -10,6 +10,8 @@ import { trackingPath } from "@/modules/booking/public-access";
 import { publicTenantContext } from "@/modules/tenant/public";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { getEnv } from "@/lib/env";
+import { dispatchEmailsSoon } from "@/modules/notifications/dispatch";
+import { readTransferSnapshot } from "@/modules/payments/transfers";
 import { publicTransferInfo } from "@/modules/payments/public";
 
 /**
@@ -64,9 +66,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       },
       PUBLIC_ACTOR(ip === "unknown" ? null : ip),
     );
+    dispatchEmailsSoon();
     // Respuesta mínima: no se devuelven ids internos de cliente ni datos de otros.
     // Datos de cobro del complejo (solo si la reserva espera una transferencia).
-    const transfer = booking.paymentStatus === "AWAITING_TRANSFER" ? await publicTransferInfo(ctx) : null;
+    // Los datos que ve el jugador son la COPIA guardada en su reserva (no cambian si el complejo los edita).
+    const transfer = booking.paymentStatus === "AWAITING_TRANSFER" ? (readTransferSnapshot(booking.transferSnapshot) ?? (await publicTransferInfo(ctx))) : null;
     return jsonOk(
       {
         code: booking.code,

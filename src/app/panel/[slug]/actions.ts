@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { dispatchEmailsSoon } from "@/modules/notifications/dispatch";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { BookingStatus } from "@/generated/prisma/client";
@@ -36,6 +37,7 @@ async function setStatus(slug: string, formData: FormData, to: BookingStatus, ok
       { bookingId: input.bookingId, to, expectedVersion: input.version, reason: input.reason },
       { type: "USER", userId: user.id },
     );
+    dispatchEmailsSoon();
     revalidatePath(`/panel/${slug}`, "layout");
     done = input.bookingId;
     return okMessage;
@@ -83,6 +85,7 @@ export async function rescheduleBookingAction(slug: string, _p: ActionResult, fd
       { bookingId: input.bookingId, startsAt, durationMinutes: input.durationMinutes, courtId: input.courtId, expectedVersion: input.version },
       { type: "USER", userId: user.id },
     );
+    dispatchEmailsSoon();
     revalidatePath(`/panel/${slug}`, "layout");
     done = input.bookingId;
     return "Reserva reprogramada.";
@@ -132,6 +135,7 @@ export async function createManualBookingAction(slug: string, _p: ActionResult, 
       },
       { type: "USER", userId: user.id },
     );
+    dispatchEmailsSoon();
     revalidatePath(`/panel/${slug}`, "layout");
     return replayed ? `La reserva ya estaba registrada (código ${booking.code}).` : `Reserva registrada. Código ${booking.code}.`;
   });
@@ -279,6 +283,7 @@ export async function moveBookingAction(slug: string, raw: z.input<typeof moveSc
     const startsAt = localDateTimeToInstant(date, `${hh}:${mm}`, tenant.timezone);
     if (!startsAt) throw new AppError("INVALID_SLOT");
     await rescheduleBooking(ctx, { bookingId: input.bookingId, startsAt, durationMinutes: input.durationMinutes, courtId: input.courtId, expectedVersion: input.version }, { type: "USER", userId: user.id });
+    dispatchEmailsSoon();
     revalidatePath(`/panel/${slug}`, "layout");
     return `Reserva movida a las ${hh}:${mm}.`;
   });

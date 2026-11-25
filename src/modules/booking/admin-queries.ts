@@ -24,6 +24,8 @@ const BOOKING_LIST_SELECT = {
   customerName: true,
   customerPhone: true,
   expiresAt: true,
+  paymentStatus: true,
+  amountDue: true,
   version: true,
   court: { select: { name: true } },
 } as const;

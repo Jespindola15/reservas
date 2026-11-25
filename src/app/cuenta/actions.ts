@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { dispatchEmailsSoon } from "@/modules/notifications/dispatch";
 import { runAction, type ActionResult } from "@/lib/actions";
 import { requireUser } from "@/lib/auth/dal";
 import { AppError } from "@/lib/errors";
@@ -78,6 +79,7 @@ export async function reportMyTransferAction(bookingId: string, _p: ActionResult
     const reference = raw ? raw.replace(/[^0-9A-Za-z-]/g, "").slice(0, 40) || null : null;
     const res = await reportPlayerTransfer(user.id, bookingId, reference);
     revalidatePath("/mis-turnos");
+    dispatchEmailsSoon();
     return res.status === "late"
       ? "El plazo para transferir ya había vencido. Avisamos al complejo para que revise tu caso manualmente."
       : "Listo, avisamos al complejo. Tu turno se confirma cuando verifique la transferencia.";
@@ -88,6 +90,7 @@ export async function cancelMyBookingAction(bookingId: string, _p: ActionResult,
   return runAction("player.cancel", async () => {
     const user = await requireUser();
     await cancelPlayerBooking(user.id, bookingId);
+    dispatchEmailsSoon();
     revalidatePath("/mis-turnos");
     revalidatePath("/");
     return "Reserva cancelada.";

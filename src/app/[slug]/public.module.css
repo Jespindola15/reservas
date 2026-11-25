@@ -1,105 +1,136 @@
-.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgb(12 22 48 / 70%), transparent); }
-.heroInner { display: flex; gap: 1.25rem; align-items: center; padding-top: 2.25rem; padding-bottom: 2rem; }
-.heroText h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 900; overflow-wrap: anywhere; }
-.heroText { min-width: 0; }
-.lead { color: var(--text); opacity: 0.9; max-width: 60ch; margin: 0 0 0.4rem; }
-.logoFallback {
-  width: 76px; height: 76px; flex: none; border-radius: 18px; display: grid; place-items: center;
-  font-size: 2.2rem; font-weight: 900; background: var(--lime); color: var(--on-lime); box-shadow: 0 0 0 6px rgb(160 248 2 / 12%);
-}
-@media (max-width: 520px) { .heroInner { align-items: flex-start; } .logoFallback { width: 56px; height: 56px; font-size: 1.6rem; } }
+/* Ficha pública del complejo y proceso de reserva. */
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.heroInner { display: flex; gap: var(--sp-4); align-items: flex-start; padding-top: var(--sp-6); padding-bottom: var(--sp-6); }
+.heroText h1 { font-size: clamp(1.6rem, 5vw, 2.4rem); font-weight: 750; letter-spacing: -0.03em; overflow-wrap: anywhere; margin-bottom: 6px; }
+.heroText { min-width: 0; flex: 1; }
+.lead { color: var(--text-muted); max-width: 60ch; margin: 0 0 6px; }
+.logoFallback { width: 64px; height: 64px; flex: none; border-radius: 16px; display: grid; place-items: center; font-size: 1.8rem; font-weight: 800; background: var(--surface-3); color: var(--text); border: 1px solid var(--border-strong); }
+.cover { display: block; width: 100%; height: clamp(140px, 26vw, 280px); object-fit: cover; }
+.cover + .heroInner { padding-top: var(--sp-4); }
+.logo { width: 64px; height: 64px; flex: none; border-radius: 16px; object-fit: cover; background: var(--surface-2); border: 1px solid var(--border-strong); }
+.contactRow { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-3); }
+.contactLink { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 var(--sp-3); border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); text-decoration: none; font-weight: 600; font-size: var(--fs-sm); }
+.contactLink:hover { background: var(--surface-2); }
+.fichaWrap { margin: calc(-1 * var(--sp-5)) calc(-1 * var(--sp-4)) 0; }
+@media (min-width: 900px) { .fichaWrap { margin-top: 0; } }
+.ratingLine { margin: 4px 0 0; color: var(--lime); }
+.ratingLine a { color: var(--text-muted); margin-left: 4px; }
 
-.layout { display: flex; flex-direction: column; gap: 1rem; }
-.step { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--lime); color: var(--on-lime); font-size: 0.8rem; font-weight: 900; margin-right: 0.4rem; vertical-align: 2px; }
-.sectionTitle { margin: 0.5rem 0 0; }
+/* Reserva primero; la información del complejo al costado (escritorio) o debajo (celular). */
+.fichaGrid { display: grid; gap: var(--sp-6); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1000px) { .fichaGrid { grid-template-columns: minmax(0, 1fr) 340px; } .side { position: sticky; top: calc(var(--topbar-h) + 60px); } }
+.bookCol { min-width: 0; scroll-margin-top: 80px; }
+.side { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.infoGrid { display: flex; flex-direction: column; gap: var(--sp-4); }
+.infoTitle { font-size: var(--fs-md); margin: 0 0 var(--sp-3); }
+.services { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.services li { padding: 4px 10px; border-radius: 999px; background: var(--surface-3); font-size: var(--fs-sm); }
+.priceList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.priceList li { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-sm); }
+.courtFeatures { display: block; font-size: var(--fs-xs); color: var(--text-faint); }
+.gallery { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); }
+.gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius); background: var(--surface-2); }
+.reviews { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.reply { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--lime); background: var(--surface-2); border-radius: 6px; font-size: var(--fs-sm); }
 
-.chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
-.chip, .chipActive { min-height: 38px; padding: 0 1rem; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+/* Pasos del proceso de reserva */
+.layout { display: flex; flex-direction: column; gap: var(--sp-6); }
+.stepBox { display: flex; flex-direction: column; gap: var(--sp-3); }
+.stepBox > h2, .sectionTitle { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-lg); }
+.step { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-3); color: var(--text); font-size: 12px; font-weight: 750; flex: none; }
+
+.chips { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.chip, .chipActive { min-height: 40px; padding: 0 var(--sp-4); border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); font-weight: 600; cursor: pointer; }
 .chipActive { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
 
-.courtCards { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }
-.courtCard, .courtActive {
-  display: flex; gap: 0.75rem; align-items: center; text-align: left; padding: 0.6rem; border-radius: 14px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit;
+.courtCards { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+@media (max-width: 640px) {
+  /* En celular las canchas se deslizan en una fila: el horario queda más arriba. */
+  .courtCards { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(200px, 72%); overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; margin: 0 calc(-1 * var(--sp-4)); padding: 0 var(--sp-4); }
+  .courtCards::-webkit-scrollbar { display: none; }
+  .courtCards > * { scroll-snap-align: start; }
 }
+.courtCard, .courtActive { display: flex; gap: var(--sp-3); align-items: center; text-align: left; padding: var(--sp-2); border-radius: var(--radius-lg); cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-height: 64px; }
 .courtCard span, .courtActive span { display: flex; flex-direction: column; min-width: 0; }
 .courtCard:hover { border-color: var(--border-strong); }
-.courtActive { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); background: var(--lime-soft); }
-.courtThumb { width: 56px; height: 56px; flex: none; border-radius: 10px; object-fit: cover; display: grid !important; place-items: center; background: var(--surface-3); color: var(--lime); font-weight: 900; }
-.courtDesc { font-size: 0.78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.courtActive { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
+.courtThumb { width: 52px; height: 52px; flex: none; border-radius: 10px; object-fit: cover; display: grid !important; place-items: center; background: var(--surface-3); color: var(--text-muted); font-weight: 750; }
+.courtDesc { font-size: var(--fs-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.datePills { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0 1rem; }
-.pill, .pillActive { min-height: 40px; padding: 0 0.9rem; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; text-transform: capitalize; }
-.pillActive { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
-.pickDate { max-width: 170px; }
-
-.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.seg, .segActive { min-height: 42px; padding: 0 1rem; border: 0; font: inherit; font-weight: 700; cursor: pointer; background: var(--bg-2); color: var(--text); }
-.seg + .seg, .seg + .segActive, .segActive + .seg { border-left: 1px solid var(--border); }
-.segActive { background: var(--lime); color: var(--on-lime); }
-
-.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 104px), 1fr)); gap: 0.5rem; }
-.slot, .slotSelected {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; min-height: 58px; padding: 0.5rem 0.7rem; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); color: var(--text); font: inherit; text-align: left;
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-.slot:hover:not(:disabled) { border-color: var(--lime); }
-.slot:disabled { cursor: not-allowed; opacity: 0.45; text-decoration: line-through; }
-.slotSelected { border-color: var(--lime); background: var(--lime); color: var(--on-lime); }
-.slotSelected .slotPrice, .slotSelected small { color: var(--on-lime); }
-.slotTime { font-weight: 800; font-variant-numeric: tabular-nums; }
-.slotTime small { font-weight: 500; color: var(--text-muted); }
-.slotPrice { font-size: 0.82rem; color: var(--text-muted); }
-
-.checkout { scroll-margin-top: 80px; border-color: rgb(160 248 2 / 40%); }
-.summary { display: flex; flex-wrap: wrap; gap: 0.35rem 1rem; align-items: center; padding: 0.8rem 1rem; margin: 0.5rem 0 1rem; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--border); }
-.total { margin-left: auto; font-size: 1.25rem; font-weight: 900; color: var(--lime); }
-
-.success { max-width: 640px; margin: 0 auto; border-color: rgb(160 248 2 / 40%); }
-.code { font-family: var(--mono); font-size: 1.35rem; letter-spacing: 0.1em; color: var(--lime); }
-.linkBox { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; margin: 1rem 0; border-radius: 12px; background: var(--bg-2); border: 1px dashed var(--border-strong); }
-.linkText { word-break: break-all; font-size: 0.8rem; color: var(--text-muted); }
-
-.trackCard { max-width: 620px; margin: 1rem auto; }
-.dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin: 1rem 0 1.25rem; }
-.dl dt { color: var(--text-faint); font-size: 0.85rem; }
-.dl dd { margin: 0; }
-
-.cover { display: block; width: 100%; height: clamp(140px, 28vw, 300px); object-fit: cover; }
-.cover + .heroInner { padding-top: 1rem; }
-.logo { width: 76px; height: 76px; flex: none; border-radius: 18px; object-fit: cover; background: var(--surface-2); box-shadow: 0 0 0 4px var(--bg); }
-@media (max-width: 520px) { .logo { width: 56px; height: 56px; } }
-.contactRow { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
-.contactLink { display: inline-flex; align-items: center; min-height: 40px; padding: 0 0.9rem; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-decoration: none; font-weight: 700; font-size: 0.9rem; }
-.contactLink:hover { border-color: var(--lime); }
-.infoGrid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); margin-bottom: 1rem; }
-.infoTitle { font-size: 1.05rem; margin: 0 0 0.6rem; }
-.services { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; padding: 0; margin: 0; }
-.services li { padding: 0.3rem 0.7rem; border-radius: 999px; background: var(--lime-soft); font-size: 0.85rem; font-weight: 600; }
-.priceList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-.priceList li { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.92rem; }
-.gallery { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); }
-.gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; }
-
-.fichaWrap { margin: -1rem -1rem 0; }
-@media (min-width: 900px) { .fichaWrap { margin-top: 0; } }
-.ratingLine { margin: 0.2rem 0 0; color: var(--lime); }
-.ratingLine a { color: var(--text-muted); margin-left: 0.3rem; }
-.bookLink { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
-.courtFeatures { display: block; font-size: 0.78rem; color: var(--text-muted); }
-.reviews { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
-.reply { margin: 0.5rem 0 0; padding: 0.5rem 0.7rem; border-left: 3px solid var(--lime); background: var(--surface-2); border-radius: 6px; font-size: 0.9rem; }
-
-/* Calendario horizontal */
-.calendarStrip { display: flex; gap: 0.45rem; overflow-x: auto; padding: 0.3rem 0 0.6rem; scroll-snap-type: x proximity; scrollbar-width: thin; }
-.day, .dayActive { flex: none; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 58px; min-height: 70px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text); font: inherit; cursor: pointer; text-transform: capitalize; }
-.day small, .dayActive small { font-size: 0.7rem; opacity: 0.85; }
-.day strong, .dayActive strong { font-size: 1.3rem; line-height: 1.1; }
+.calendarStrip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 6px; scroll-snap-type: x proximity; scrollbar-width: none; }
+.calendarStrip::-webkit-scrollbar { display: none; }
+.day, .dayActive { flex: none; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 56px; min-height: 68px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; text-transform: capitalize; }
+.day small, .dayActive small { font-size: 11px; opacity: 0.8; }
+.day strong, .dayActive strong { font-size: 1.25rem; line-height: 1.15; }
 .dayActive { background: var(--lime); border-color: var(--lime); color: var(--on-lime); }
 .day:focus-visible, .dayActive:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.pickDate { max-width: 200px; }
 
-/* Resumen */
-.summaryList { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0 0 1rem; padding: 0.9rem; border-radius: var(--radius); background: var(--surface-2); }
-.summaryList dt { color: var(--text-muted); font-size: 0.88rem; }
-.summaryList dd { margin: 0; font-size: 0.95rem; }
+.segmented { display: inline-flex; padding: 3px; gap: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.seg, .segActive { min-height: 38px; padding: 0 var(--sp-4); border: 0; border-radius: 7px; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-muted); }
+.segActive { background: var(--surface-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+.courtSlots { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.courtSlotsHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.courtSlotsHead h3 { margin: 0; }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr)); gap: var(--sp-2); }
+.slot, .slotSelected {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 10px; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-2); color: var(--text); text-align: left;
+}
+.slot:hover:not(:disabled) { border-color: var(--lime); }
+.slot:disabled { cursor: not-allowed; opacity: 0.35; border-style: dashed; }
+.slotSelected { border-color: var(--lime); background: var(--lime); color: var(--on-lime); }
+.slotSelected .slotPrice, .slotSelected small { color: var(--on-lime); }
+.slotTime { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 1rem; }
+.slotTime small { font-weight: 500; color: var(--text-muted); font-size: 11px; }
+.slotPrice { font-size: var(--fs-xs); color: var(--text-muted); }
+
+/* Barra fija con la selección (celular): precio y botón siempre a la vista */
+.selectBar {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom)); z-index: 25;
+  display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2); border-top: 1px solid var(--border-strong); box-shadow: 0 -10px 30px rgb(0 0 0 / 45%);
+}
+.selectBar > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.selectBar strong { font-size: var(--fs-md); }
+@media (min-width: 900px) { .selectBar { display: none; } }
+
+.checkout { scroll-margin-top: 80px; border-color: rgb(160 248 2 / 40%); }
+.total { font-size: 1.15rem; font-weight: 750; }
+.summaryList { display: grid; grid-template-columns: max-content 1fr; gap: 8px var(--sp-4); margin: 0 0 var(--sp-4); padding: var(--sp-4); border-radius: var(--radius); background: var(--bg-2); border: 1px solid var(--border); }
+.summaryList dt { color: var(--text-muted); font-size: var(--fs-sm); }
+.summaryList dd { margin: 0; font-size: var(--fs-md); overflow-wrap: anywhere; }
+.money { display: grid; gap: 6px; padding: var(--sp-4); border-radius: var(--radius); border: 1px solid var(--border-strong); margin-bottom: var(--sp-4); }
+.moneyRow { display: flex; justify-content: space-between; gap: var(--sp-3); font-variant-numeric: tabular-nums; }
+.moneyRow strong { font-size: 1.05rem; }
+.moneyDue { color: var(--lime); }
+
+.success { max-width: 640px; margin: 0 auto; border-color: rgb(160 248 2 / 40%); }
+.code { font-family: var(--mono); font-size: 1.25rem; letter-spacing: 0.1em; color: var(--lime); }
+.linkBox { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); margin: var(--sp-4) 0; border-radius: var(--radius); background: var(--bg-2); border: 1px dashed var(--border-strong); }
+.linkText { word-break: break-all; font-size: var(--fs-xs); color: var(--text-muted); }
+
+.trackCard { max-width: 620px; margin: 0 auto; }
+.dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px var(--sp-4); margin: var(--sp-4) 0; }
+.dl dt { color: var(--text-faint); font-size: var(--fs-sm); }
+.dl dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 420px) { .dl, .summaryList { grid-template-columns: 1fr; gap: 2px; } .dl dd, .summaryList dd { margin-bottom: 6px; } }
+/* Canchas como fila desplazable (menos altura en celular que tarjetas apiladas). */
+.courtStrip { display: flex; gap: var(--sp-2); overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; scroll-snap-type: x proximity; }
+.courtChip, .courtChipActive {
+  flex: none; scroll-snap-align: start; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  min-height: 52px; max-width: 220px; padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); cursor: pointer;
+}
+.courtChip span, .courtChipActive span { font-size: var(--fs-xs); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.courtChip:hover { border-color: var(--text-muted); }
+.courtChipActive { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
+.courtChipActive strong { color: var(--lime); }
+.courtChip:focus-visible, .courtChipActive:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .slot, .slotSelected { min-height: 56px; padding-inline: 2px; }
+  .slotTime { font-size: 0.95rem; }
+}
+@media (max-width: 360px) { .slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

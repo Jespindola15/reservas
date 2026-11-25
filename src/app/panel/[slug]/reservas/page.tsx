@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { isAppError } from "@/lib/errors";
@@ -64,11 +65,8 @@ export default async function BookingsPage({ params, searchParams }: { params: P
         </div>
       </header>
 
-      <form className={`${ui.card} ${ui.grid2}`} style={{ marginBottom: "1rem", alignItems: "end" }} aria-label="Filtros">
-        <label className={ui.field}>
-          <span className={ui.label}>Buscar</span>
-          <input className={ui.input} name="q" defaultValue={sp.q} placeholder="Nombre, teléfono o código" maxLength={80} />
-        </label>
+      <FilterBar label="Buscar reservas" search={{ name: "q", placeholder: "Nombre, teléfono o código", defaultValue: sp.q }}
+        active={Boolean(sp.status || sp.court || sp.from || sp.to)} clearHref={`/panel/${slug}/reservas`}>
         <label className={ui.field}>
           <span className={ui.label}>Estado</span>
           <select className={ui.select} name="status" defaultValue={sp.status ?? ""}>
@@ -91,11 +89,7 @@ export default async function BookingsPage({ params, searchParams }: { params: P
           <span className={ui.label}>Hasta</span>
           <input className={ui.input} type="date" name="to" defaultValue={sp.to} />
         </label>
-        <div className={ui.row}>
-          <button className={ui.button}>Filtrar</button>
-          <Link href={`/panel/${slug}/reservas`} className={`${ui.button} ${ui.buttonGhost}`}>Limpiar</Link>
-        </div>
-      </form>
+      </FilterBar>
 
       {invalid ? <p className={`${ui.alert} ${ui.alertWarn}`}>Algún filtro no era válido; se muestran todas las reservas.</p> : null}
 
@@ -117,10 +111,10 @@ export default async function BookingsPage({ params, searchParams }: { params: P
                       <Link href={`/panel/${slug}/reservas/${b.id}`}>{formatLocalDateTime(b.startsAt, tenant.timezone)}</Link>
                       <div className={ui.faint}>hasta {formatLocalTime(b.endsAt, tenant.timezone)} · {b.code}</div>
                     </td>
-                    <td>{b.court.name}</td>
-                    <td><Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.linkPlain}>{b.customerName}</Link><div className={ui.faint}>{b.customerPhone}</div></td>
-                    <td>{formatMoney(b.priceAmount, b.currency)}</td>
-                    <td>
+                    <td data-label="Cancha">{b.court.name}</td>
+                    <td data-label="Cliente"><Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.linkPlain}>{b.customerName}</Link><div className={ui.faint}>{b.customerPhone}</div></td>
+                    <td data-label="Importe">{formatMoney(b.priceAmount, b.currency)}</td>
+                    <td data-label="Estado">
                       <span className={`${ui.badge} ${ui[`badge${b.status}`] ?? ""}`}>{STATUS_LABEL[b.status]}</span>
                       {b.status === "PENDING" && b.expiresAt ? <div className={ui.faint}>vence {formatLocalTime(b.expiresAt, tenant.timezone)}</div> : null}
                     </td>

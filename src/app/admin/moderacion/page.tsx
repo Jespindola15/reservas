@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listOpenReports } from "@/modules/player/reviews";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { AdminNav } from "../AdminNav";
 import { moderateReviewAction } from "../actions";
 
 export const metadata: Metadata = { title: "Moderación de opiniones" };
@@ -16,12 +12,8 @@ export default async function ModerationPage() {
   const reports = await listOpenReports(user);
   return (
     <>
-      <TopBar>
-        <Link href="/panel" className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Mis complejos</Link>
-        <SignOutButton />
-      </TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Moderación</h1><AdminNav current="/admin/moderacion" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Plataforma</p><h1>Moderación</h1></div></header>
         <p className={ui.muted}>Denuncias abiertas sobre opiniones. Ocultá solo contenido ofensivo, falso o ajeno a la experiencia; una crítica legítima se mantiene.</p>
         {reports.length === 0 ? <p className={ui.empty}>No hay denuncias pendientes.</p> : (
           <ul className={ui.stack} style={{ listStyle: "none", padding: 0 }}>
@@ -46,7 +38,7 @@ export default async function ModerationPage() {
             ))}
           </ul>
         )}
-      </main>
+      </div>
     </>
   );
 }

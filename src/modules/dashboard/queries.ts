@@ -25,7 +25,11 @@ export async function getDashboard(ctx: TenantContext, timezone: string, now: Da
     });
     const todays = await tx.booking.findMany({
       where: { tenantId: ctx.tenantId, startsAt: { gte: from, lt: to } },
-      select: { id: true, status: true, courtId: true, durationMinutes: true },
+      orderBy: { startsAt: "asc" },
+      select: {
+        id: true, status: true, courtId: true, durationMinutes: true, startsAt: true, endsAt: true, code: true,
+        customerName: true, customerPhone: true, paymentStatus: true, amountDue: true, currency: true, court: { select: { name: true } },
+      },
     });
     const pending = await tx.booking.count({
       where: { tenantId: ctx.tenantId, status: "PENDING", startsAt: { gte: now }, expiresAt: { gt: now } },
@@ -33,9 +37,9 @@ export async function getDashboard(ctx: TenantContext, timezone: string, now: Da
     const upcoming = await tx.booking.findMany({
       where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "CONFIRMED"] }, startsAt: { gte: now } },
       orderBy: { startsAt: "asc" },
-      take: 8,
+      take: 16,
       select: {
-        id: true, code: true, status: true, startsAt: true, endsAt: true, customerName: true, expiresAt: true,
+        id: true, code: true, status: true, startsAt: true, endsAt: true, customerName: true, expiresAt: true, paymentStatus: true,
         court: { select: { name: true } },
       },
     });
@@ -76,7 +80,8 @@ export async function getDashboard(ctx: TenantContext, timezone: string, now: Da
         expired7d,
       },
       occupancy,
-      upcoming,
+      agenda: todays.filter((b) => occupying.has(b.status)),
+      upcoming: upcoming.filter((b) => b.startsAt >= to),
       activity,
     };
   });

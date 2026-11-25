@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DateTime } from "luxon";
 import { ActionForm } from "@/components/ActionForm";
+import { Icon } from "@/components/shell/icons";
+import { StatusBadge } from "@/components/status/StatusBadge";
 import ui from "@/components/ui.module.css";
 import { requireTenantPage } from "@/lib/auth/page";
 import { getCalendar, getMonthSummary } from "@/modules/booking/admin-queries";
@@ -19,7 +21,7 @@ export const metadata: Metadata = { title: "Calendario" };
 const ROW_MIN = 30; // minutos por fila
 const ROW_PX = 40;
 
-type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string; sport?: string; status?: string };
+type SP = { view?: string; date?: string; court?: string; nueva?: string; time?: string; sport?: string; status?: string; grilla?: string };
 const SPORT_LABEL: Record<string, string> = { FOOTBALL_5: "Fútbol 5", FOOTBALL_7: "Fútbol 7", FOOTBALL_8: "Fútbol 8", FOOTBALL_11: "Fútbol 11", PADEL: "Pádel", OTHER: "Otro" };
 
 export default async function CalendarPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<SP> }) {
@@ -72,20 +74,25 @@ export default async function CalendarPage({ params, searchParams }: { params: P
 
   return (
     <>
-      <header className={ui.pageHeader}>
-        <div>
-          <p className={ui.eyebrow}>Calendario</p>
-          <h1 style={{ textTransform: "none" }}>{title.charAt(0).toUpperCase() + title.slice(1)}</h1>
-        </div>
-        <div className={ui.row}>
-          <div className={styles.segmented} role="group" aria-label="Vista">
-            <Link href={qs({ view: "day" })} className={view === "day" ? styles.segActive : styles.seg} aria-current={view === "day" ? "page" : undefined}>Día</Link>
-            <Link href={qs({ view: "week" })} className={view === "week" ? styles.segActive : styles.seg} aria-current={view === "week" ? "page" : undefined}>Semana</Link>
-            <Link href={qs({ view: "month" })} className={view === "month" ? styles.segActive : styles.seg} aria-current={view === "month" ? "page" : undefined}>Mes</Link>
+      <header className={styles.head}>
+        <div className={styles.titleRow}>
+          <div>
+            <p className={ui.eyebrow}>Calendario</p>
+            <h1>{title.charAt(0).toUpperCase() + title.slice(1)}</h1>
           </div>
-          <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: shift(-1) })} aria-label="Anterior">←</Link>
-          <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: today })}>Hoy</Link>
-          <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: shift(1) })} aria-label="Siguiente">→</Link>
+          <Link className={`${ui.button} ${styles.newBtn}`} href={qs({ nueva: "1" })}><Icon name="plus" />Nueva reserva</Link>
+        </div>
+        <div className={styles.controls}>
+          <div className={ui.segmented} role="group" aria-label="Vista">
+            <Link href={qs({ view: "day" })} aria-current={view === "day" ? "page" : undefined}>Día</Link>
+            <Link href={qs({ view: "week" })} aria-current={view === "week" ? "page" : undefined}>Semana</Link>
+            <Link href={qs({ view: "month" })} aria-current={view === "month" ? "page" : undefined}>Mes</Link>
+          </div>
+          <div className={styles.stepper}>
+            <Link className={ui.iconButton} href={qs({ date: shift(-1) })} aria-label="Anterior"><Icon name="back" /></Link>
+            <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={qs({ date: today })}>Hoy</Link>
+            <Link className={ui.iconButton} href={qs({ date: shift(1) })} aria-label="Siguiente"><Icon name="chevron" /></Link>
+          </div>
           <form action={base} className={styles.dateForm}>
             <input type="hidden" name="view" value={view} />
             {courtFilter ? <input type="hidden" name="court" value={courtFilter} /> : null}
@@ -93,29 +100,21 @@ export default async function CalendarPage({ params, searchParams }: { params: P
             <input id="cal-date" className={`${ui.input} ${styles.dateInput}`} type="date" name="date" defaultValue={date} />
             <button className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Ir</button>
           </form>
-          <Link className={`${ui.button} ${ui.buttonSmall}`} href={qs({ nueva: "1" })}>+ Reserva manual</Link>
         </div>
       </header>
-
-      <div className={styles.legend} aria-label="Referencias">
-        <span className={`${styles.chip} ${styles.CONFIRMED}`}>Confirmada</span>
-        <span className={`${styles.chip} ${styles.PENDING}`}>Pendiente</span>
-        <span className={`${styles.chip} ${styles.block}`}>Bloqueo</span>
-        <span className={`${styles.chip} ${styles.free}`}>+ Libre</span>
-      </div>
 
       {sp.nueva ? (
         <section className={`${ui.card} ${styles.manual}`} aria-labelledby="manual">
           <div className={ui.cardHeader}>
             <h2 id="manual">Nueva reserva manual</h2>
-            <Link href={qs({ nueva: undefined, time: undefined, court: courtFilter })} className={ui.muted}>Cerrar ✕</Link>
+            <Link href={qs({ nueva: undefined, time: undefined, court: courtFilter })} className={ui.iconButton} aria-label="Cerrar"><Icon name="close" /></Link>
           </div>
           <ManualForm slug={slug} date={date} time={sp.time} courtId={sp.court} courts={allCourts} />
         </section>
       ) : null}
 
       {cal.courts.length === 0 ? (
-        <p className={ui.empty}>No hay canchas activas. <Link href={`/panel/${slug}/canchas`}>Crear una cancha</Link></p>
+        <div className={ui.empty}><Icon name="courts" size={28} /><span>No hay canchas activas.</span><Link className={`${ui.button} ${ui.buttonSmall}`} href={`/panel/${slug}/canchas`}>Crear una cancha</Link></div>
       ) : month ? (
         <MonthGrid month={month} qs={qs} today={today} courts={allCourts} courtFilter={courtFilter} />
       ) : view === "day" ? (
@@ -139,7 +138,15 @@ export default async function CalendarPage({ params, searchParams }: { params: P
             <button className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Filtrar</button>
             {sportFilter || statusFilter ? <Link href={qs({ sport: undefined, status: undefined })} className={ui.muted}>Quitar filtros</Link> : null}
           </form>
-          <DayGrid slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} canMove={canMove && date >= today} />
+          {/* Celular: agenda en lista (con horarios libres a un toque). Escritorio/tablet: grilla con arrastre. */}
+          <div className={sp.grilla === "1" ? styles.hidden : styles.agendaOnly}>
+            <DayAgenda slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} />
+            <Link href={qs({ grilla: "1" })} className={`${ui.button} ${ui.buttonGhost} ${ui.buttonSmall}`} style={{ marginTop: "var(--sp-4)" }}>Ver como grilla</Link>
+          </div>
+          <div className={sp.grilla === "1" ? undefined : styles.gridOnly}>
+            {sp.grilla === "1" ? <Link href={qs({ grilla: undefined })} className={`${ui.button} ${ui.buttonGhost} ${ui.buttonSmall} ${styles.mobileOnly}`} style={{ marginBottom: "var(--sp-3)" }}>Ver como lista</Link> : null}
+            <DayGrid slug={slug} tz={tz} cal={dayCal} date={date} qs={qs} canMove={canMove && date >= today} />
+          </div>
         </>
       ) : (
         <WeekGrid slug={slug} tz={tz} cal={cal} qs={qs} courts={allCourts} courtFilter={courtFilter} today={today} />
@@ -149,6 +156,67 @@ export default async function CalendarPage({ params, searchParams }: { params: P
 }
 
 type Cal = Awaited<ReturnType<typeof getCalendar>>;
+
+/** Agenda del día para celular: turnos en orden y, por cancha, los horarios libres para reservar con un toque. */
+function DayAgenda({ slug, tz, cal, date, qs }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string }) {
+  const midnight = localMidnight(date, tz)!;
+  const minuteOf = (d: Date) => Math.round(DateTime.fromJSDate(d).diff(midnight, "minutes").minutes);
+  const day = cal.windows[0]!;
+  const nowMin = minuteOf(new Date());
+  const items = [...cal.bookings].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  return (
+    <div className={ui.stack}>
+      {day.closedReason ? <p className={`${ui.alert} ${ui.alertWarn}`}>Cerrado: {day.closedReason}</p> : null}
+      {items.length === 0 ? (
+        <div className={ui.empty}><Icon name="calendar" size={28} /><span>No hay turnos este día.</span></div>
+      ) : (
+        <ul className={ui.list} aria-label="Turnos del día">
+          {items.map((b) => (
+            <li key={b.id}>
+              <Link href={`/panel/${slug}/reservas/${b.id}`} className={ui.listRow}>
+                <span className={styles.agTime}>{formatLocalTime(b.startsAt, tz)}<small>{formatLocalTime(b.endsAt, tz)}</small></span>
+                <span className={ui.listMain}><strong>{b.customerName}</strong><span className={ui.faint}>{b.court.name}</span></span>
+                <StatusBadge status={b.status} paymentStatus={b.paymentStatus} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {cal.blocks.length ? (
+        <ul className={ui.list} aria-label="Bloqueos">
+          {cal.blocks.map((b) => (
+            <li key={b.id} className={ui.listRow}><Icon name="clock" /><span className={ui.listMain}><strong>Bloqueado {formatLocalTime(b.startsAt, tz)}–{formatLocalTime(b.endsAt, tz)}</strong><span className={ui.faint}>{cal.courts.find((c) => c.id === b.courtId)?.name ?? "Todas las canchas"} · {b.reason}</span></span></li>
+          ))}
+        </ul>
+      ) : null}
+      <section aria-label="Horarios libres">
+        <h2 className={styles.freeTitle}>Horarios libres</h2>
+        {cal.courts.map((c) => {
+          const windows = day.courts.find((x) => x.courtId === c.id)?.windows ?? [];
+          const busy = (s: number, e: number) =>
+            cal.bookings.some((b) => b.courtId === c.id && minuteOf(b.startsAt) < e && minuteOf(b.endsAt) > s) ||
+            cal.blocks.some((b) => (b.courtId === c.id || b.courtId === null) && minuteOf(b.startsAt) < e && minuteOf(b.endsAt) > s);
+          const free: number[] = [];
+          for (const w of windows) for (let m = w.openMinute; m + 60 <= w.closeMinute; m += 60) if (!busy(m, m + 60) && m >= nowMin) free.push(m);
+          return (
+            <div key={c.id} className={styles.freeCourt}>
+              <strong>{c.name}</strong>
+              {free.length === 0 ? <span className={ui.faint}>Sin horarios libres</span> : (
+                <div className={styles.freeChips}>
+                  {free.map((m) => (
+                    <Link key={m} className={ui.chip} href={qs({ nueva: "1", court: c.id, time: minutesToHHMM(m), date: m >= 1440 ? midnight.plus({ days: 1 }).toISODate()! : date })} aria-label={`Reservar ${c.name} a las ${minutesToHHMM(m)}`}>
+                      {minutesToHHMM(m % 1440)}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
 
 function DayGrid({ slug, tz, cal, date, qs, canMove }: { slug: string; tz: string; cal: Cal; date: string; qs: (o: Partial<SP>) => string; canMove: boolean }) {
   const midnight = localMidnight(date, tz)!;
@@ -251,7 +319,7 @@ function MonthGrid({ month, qs, today, courts, courtFilter }: { month: Awaited<R
   while (cells.length % 7) cells.push(null);
   return (
     <>
-      <form className={ui.row} style={{ marginBottom: "0.75rem" }}>
+      <form className={styles.filters}>
         <input type="hidden" name="view" value="month" />
         <input type="hidden" name="date" value={month.firstDay} />
         <label className={ui.muted} htmlFor="court-filter-m">Cancha</label>
@@ -284,7 +352,7 @@ function MonthGrid({ month, qs, today, courts, courtFilter }: { month: Awaited<R
 function WeekGrid({ slug, tz, cal, qs, courts, courtFilter, today }: { slug: string; tz: string; cal: Cal; qs: (o: Partial<SP>) => string; courts: Cal["courts"]; courtFilter?: string; today: string }) {
   return (
     <>
-      <form className={ui.row} style={{ marginBottom: "0.75rem" }}>
+      <form className={styles.filters}>
         <input type="hidden" name="view" value="week" />
         <input type="hidden" name="date" value={cal.dates[0]} />
         <label className={ui.muted} htmlFor="court-filter">Cancha</label>

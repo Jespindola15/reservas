@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { isAppError } from "@/lib/errors";
 import { listAuditLogs } from "@/modules/platform/plans";
 import { listTenantsForPlatform } from "@/modules/platform/service";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { AdminNav } from "../AdminNav";
 
 export const metadata: Metadata = { title: "Auditoría" };
 
@@ -39,12 +36,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <TopBar>
-        <Link href="/panel" className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Mis complejos</Link>
-        <SignOutButton />
-      </TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Auditoría</h1><AdminNav current="/admin/auditoria" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Seguridad</p><h1>Auditoría</h1></div></header>
         <form className={`${ui.card} ${ui.grid3}`} method="get" role="search" aria-label="Filtros de auditoría">
           <label className={ui.field}><span className={ui.label}>Complejo</span>
             <select className={ui.select} name="tenantId" defaultValue={sp.tenantId ?? ""}>
@@ -75,10 +68,10 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                 {result.rows.map((r) => (
                   <tr key={r.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{r.createdAt.toISOString().slice(0, 19).replace("T", " ")}</td>
-                    <td>{r.tenant ? `/${r.tenant.slug}` : <span className={ui.faint}>plataforma</span>}</td>
-                    <td><code>{r.action}</code><div className={ui.faint}>{r.entityType}{r.entityId ? ` · ${r.entityId.slice(0, 8)}` : ""}</div></td>
-                    <td>{ACTOR[r.actorType] ?? r.actorType}<div className={ui.faint}>{r.actorEmail ?? ""}</div></td>
-                    <td className={ui.faint} style={{ maxWidth: 360, overflowWrap: "anywhere" }}>{summarize(r.metadata)}</td>
+                    <td data-label="Complejo">{r.tenant ? `/${r.tenant.slug}` : <span className={ui.faint}>plataforma</span>}</td>
+                    <td data-label="Acción"><code>{r.action}</code><div className={ui.faint}>{r.entityType}{r.entityId ? ` · ${r.entityId.slice(0, 8)}` : ""}</div></td>
+                    <td data-label="Quién">{ACTOR[r.actorType] ?? r.actorType}<div className={ui.faint}>{r.actorEmail ?? ""}</div></td>
+                    <td data-label="Detalle" className={ui.faint} style={{ maxWidth: 360, overflowWrap: "anywhere" }}>{summarize(r.metadata)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -86,7 +79,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
             {nextQs ? <p style={{ marginTop: "1rem" }}><Link className={`${ui.button} ${ui.buttonSecondary}`} href={`/admin/auditoria?${nextQs}`}>Ver más antiguos</Link></p> : null}
           </div>
         ) : null}
-      </main>
+      </div>
     </>
   );
 }

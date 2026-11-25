@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
-import { TopBar } from "@/components/TopBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listPlans } from "@/modules/platform/plans";
 import { listTenantsForPlatform } from "@/modules/platform/service";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { assignSubscriptionAction, savePlanAction } from "../actions";
-import { AdminNav } from "../AdminNav";
+import { formatMoney } from "@/modules/booking/pricing";
+import { listSubscriptionPayments } from "@/modules/platform/billing";
+import { assignSubscriptionAction, recordSubscriptionPaymentAction, savePlanAction } from "../actions";
 
-export const metadata: Metadata = { title: "Planes" };
+const day = (d: Date | null | undefined) => (d ? d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }) : "—");
+
+export const metadata: Metadata = { title: "Planes y suscripciones" };
 
 type PlanRow = Awaited<ReturnType<typeof listPlans>>[number];
 
@@ -35,18 +35,15 @@ export default async function PlansPage() {
   const user = await requireSuperadminPage("/admin/planes");
   const plans = await listPlans(user);
   const tenants = await listTenantsForPlatform(user);
+  const payments = await listSubscriptionPayments(user, 15);
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const nextMonth = new Date(now.getTime() + 30 * 86_400_000).toISOString().slice(0, 10);
 
   return (
     <>
-      <TopBar>
-        <Link href="/panel" className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`}>Mis complejos</Link>
-        <SignOutButton />
-      </TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Planes</h1><AdminNav current="/admin/planes" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Comercial</p><h1>Planes y suscripciones</h1></div></header>
         <p className={`${ui.alert} ${ui.alertInfo}`}>Los planes definen límites. No hay cobro automático: la suscripción es un registro administrativo.</p>
         {plans.length === 0 ? <p className={ui.muted}>Todavía no hay planes. Creá el primero abajo.</p> : null}
         <div className={ui.grid2}>
@@ -93,7 +90,44 @@ export default async function PlansPage() {
             </ActionForm>
           ) : <p className={ui.muted}>Necesitás al menos un plan activo y un complejo.</p>}
         </section>
-      </main>
+        <div className={ui.grid2}>
+          <section className={ui.card} aria-labelledby="cobro">
+            <h2 id="cobro">Registrar pago de suscripción</h2>
+            <p className={ui.faint}>Pagos recibidos por fuera de TURNUP (transferencia, efectivo, link de pago). No se guardan datos de tarjetas.</p>
+            <ActionForm action={recordSubscriptionPaymentAction} submitLabel="Registrar pago" className={ui.stack} resetOnSuccess>
+              <label className={ui.field}><span className={ui.label}>Complejo</span>
+                <select className={ui.select} name="tenantId" required>
+                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <div className={ui.grid2}>
+                <label className={ui.field}><span className={ui.label}>Importe ($)</span><input className={ui.input} name="amount" inputMode="decimal" required pattern="\d{1,9}([.,]\d{1,2})?" /></label>
+                <label className={ui.field}><span className={ui.label}>Medio</span>
+                  <select className={ui.select} name="method" defaultValue="TRANSFER">
+                    <option value="TRANSFER">Transferencia</option><option value="CASH">Efectivo</option><option value="MERCADOPAGO_MANUAL">Mercado Pago (manual)</option><option value="CARD">Tarjeta (terminal)</option><option value="OTHER">Otro</option>
+                  </select>
+                </label>
+                <label className={ui.field}><span className={ui.label}>Fecha de pago</span><input className={ui.input} type="date" name="paidAt" defaultValue={today} required /></label>
+                <span />
+                <label className={ui.field}><span className={ui.label}>Período desde</span><input className={ui.input} type="date" name="periodStart" required /></label>
+                <label className={ui.field}><span className={ui.label}>Período hasta</span><input className={ui.input} type="date" name="periodEnd" required /></label>
+              </div>
+              <label className={ui.field}><span className={ui.label}>Nota (opcional)</span><input className={ui.input} name="note" maxLength={300} /></label>
+              <label className={ui.checkbox}><input type="checkbox" name="extend" defaultChecked /> Activar la suscripción y extender el vencimiento hasta el fin del período</label>
+            </ActionForm>
+          </section>
+          <section className={ui.card} aria-labelledby="pagos">
+            <h2 id="pagos">Últimos pagos registrados</h2>
+            {payments.length === 0 ? <p className={ui.muted}>Todavía no hay pagos registrados.</p> : (
+              <ul className={ui.stackSm} style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {payments.map((p) => (
+                  <li key={p.id}><strong>{formatMoney(p.amount, p.currency)}</strong> · {p.tenant.name} · {day(p.paidAt)}<div className={ui.faint}>Período {p.periodStart.toISOString().slice(0, 10)} a {p.periodEnd.toISOString().slice(0, 10)}{p.note ? ` · ${p.note}` : ""}</div></li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </div>
     </>
   );
 }

@@ -104,6 +104,9 @@ test("jugador: deporte → cancha → fecha → horario → datos → código y 
   await page.getByRole("radio", { name: new RegExp(`^${courtName}`) }).click();
   await page.getByRole("radiogroup", { name: "Fecha" }).getByRole("radio").nth(1).click();
   await page.getByRole("radio", { name: "90 min" }).click();
+  // Los horarios ocupados se ocultan por defecto; se pueden mostrar para ver que quedaron tomados.
+  await expect(page.getByRole("button", { name: /^20:00/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Ver también los ocupados" }).click();
   await expect(page.getByRole("button", { name: /^20:00/ })).toBeDisabled();
   await expect(page.getByRole("button", { name: /^21:00/ })).toBeDisabled(); // se solapa
   await expect(page.getByRole("button", { name: /^21:30/ })).toBeEnabled(); // consecutiva
@@ -269,8 +272,9 @@ test("cookies de sesión httpOnly y cabeceras de seguridad", async ({ page, cont
 
 test("superadmin accede al panel de plataforma", async ({ page }) => {
   await loginSuperadmin(page);
-  await expect(page.getByRole("heading", { name: "Plataforma" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: /Pádel Centro/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plataforma", exact: true })).toBeVisible();
+  await page.goto("/admin/complejos");
+  await expect(page.getByRole("cell", { name: /^Pádel Centro/ })).toBeVisible();
 });
 
 test("sin sesión, el panel redirige al login", async ({ page }) => {
@@ -514,7 +518,7 @@ test("portada lista los complejos y el dueño personaliza su página pública (l
 test("puesta en marcha: aviso en el inicio, pasos con avance y enlace + QR al final @mobile", async ({ page }) => {
   await login(page, "duenio@padel-centro.example.com", OWNER_PW);
   await page.waitForURL("**/panel/padel-centro");
-  await page.getByRole("region", { name: "Puesta en marcha" }).getByRole("link", { name: "Continuar" }).click();
+  await page.getByRole("link", { name: /Puesta en marcha: \d de 7 pasos/ }).click();
   await expect(page.getByRole("heading", { name: "Puesta en marcha" })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Avance de la puesta en marcha" })).toBeVisible();
   const rules = page.getByRole("listitem").filter({ hasText: "Reglas de reserva" });
@@ -531,8 +535,11 @@ test("superadmin: métricas comerciales, estado del sistema y pago de suscripci�
   await loginSuperadmin(page);
   await page.goto("/admin");
   await expect(page.getByText("MRR registrado")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Estado del sistema" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Alertas" })).toBeVisible();
+  await page.goto("/admin/sistema");
+  await expect(page.getByRole("heading", { name: "Tareas programadas" })).toBeVisible();
   await expect(page.getByText(/MB del plan gratuito/)).toBeVisible();
+  await page.goto("/admin/planes");
   const form = page.getByRole("region", { name: "Registrar pago de suscripción" });
   await form.getByLabel("Complejo").selectOption({ label: "Pádel Centro" });
   await form.getByLabel("Importe ($)").fill("25000");
@@ -577,7 +584,7 @@ test("jugador con cuenta: registro, explorar, ficha, favorito, reserva con datos
   await page.getByRole("button", { name: /^19:00/ }).click();
   const summary = page.getByRole("definition").filter({ hasText: "Pádel Centro" });
   await expect(summary).toBeVisible();
-  await expect(page.getByText("Precio total")).toBeVisible();
+  await expect(page.getByText("Precio del turno")).toBeVisible();
   await expect(page.getByLabel("Nombre y apellido")).toHaveValue("Juana Jugadora");
   await expect(page.getByLabel("Email")).toHaveValue(email);
   await page.getByLabel("Teléfono").fill("11 5555-7777");
@@ -694,7 +701,7 @@ test("transferencia: el dueño configura cobros, el jugador reserva e informa, e
   await player.getByRole("radio", { name: /^Pádel 1/ }).click();
   await player.getByRole("radio", { name: "60 min" }).click();
   await player.getByRole("button", { name: /^19:00/ }).click();
-  await expect(player.getByText("Seña requerida")).toBeVisible();
+  await expect(player.getByText("Seña a transferir ahora")).toBeVisible();
   await player.getByLabel("Nombre y apellido").fill("Tomás Transferencia");
   await player.getByLabel("Teléfono").fill("11 5555-3333");
   await player.getByLabel("Email").fill("tomas@example.com");

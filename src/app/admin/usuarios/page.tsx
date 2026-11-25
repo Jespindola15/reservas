@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { TopBar } from "@/components/TopBar";
+import { FilterBar } from "@/components/FilterBar";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
 import { listUsers } from "@/modules/platform/users";
-import { SignOutButton } from "../../panel/SignOutButton";
-import { AdminNav } from "../AdminNav";
 
 export const metadata: Metadata = { title: "Usuarios · Superadministrador" };
 
@@ -19,12 +17,10 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const href = (p: number) => `?${new URLSearchParams(Object.entries({ ...sp, page: String(p) }).filter(([, v]) => v) as [string, string][]).toString()}`;
   return (
     <>
-      <TopBar><SignOutButton /></TopBar>
-      <main className={`${ui.container} ${ui.page} ${ui.stack}`}>
-        <div className={ui.spread}><h1>Usuarios</h1><AdminNav current="/admin/usuarios" /></div>
+      <div className={ui.stack}>
+        <header className={ui.pageHeader}><div><p className={ui.eyebrow}>Plataforma</p><h1>Usuarios</h1></div></header>
         <p className={ui.muted} style={{ margin: 0 }}>Jugadores, dueños, administradores y personal. Nunca se muestran contraseñas, sesiones ni secretos.</p>
-        <form method="get" className={ui.grid3} aria-label="Filtros">
-          <label className={ui.field}><span className={ui.label}>Buscar</span><input className={ui.input} name="q" defaultValue={data.q} placeholder="Nombre o email" maxLength={80} /></label>
+        <FilterBar label="Buscar usuarios" search={{ name: "q", placeholder: "Nombre o email", defaultValue: data.q }} active={data.tipo !== "todos" || data.estado !== "todos" || Boolean(sp.orden && sp.orden !== "recientes")} clearHref="/admin/usuarios">
           <label className={ui.field}><span className={ui.label}>Tipo</span>
             <select className={ui.select} name="tipo" defaultValue={data.tipo}>
               <option value="todos">Todos</option><option value="jugador">Jugadores</option><option value="dueno">Dueños</option>
@@ -41,8 +37,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               <option value="recientes">Más recientes</option><option value="antiguos">Más antiguos</option><option value="nombre">Nombre</option>
             </select>
           </label>
-          <div className={ui.row} style={{ alignSelf: "end" }}><button className={ui.button} type="submit">Filtrar</button><Link className={`${ui.button} ${ui.buttonGhost}`} href="/admin/usuarios">Limpiar</Link></div>
-        </form>
+        </FilterBar>
         <p className={ui.faint} style={{ margin: 0 }}>{data.total} usuario(s)</p>
         {data.rows.length === 0 ? <p className={ui.empty}>No hay usuarios con esos filtros.</p> : (
           <div className={ui.tableWrap}>
@@ -72,7 +67,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             {data.page < data.pages ? <Link className={`${ui.button} ${ui.buttonSecondary} ${ui.buttonSmall}`} href={href(data.page + 1)}>Siguiente</Link> : null}
           </nav>
         ) : null}
-      </main>
+      </div>
     </>
   );
 }

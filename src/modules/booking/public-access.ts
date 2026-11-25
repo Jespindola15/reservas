@@ -3,6 +3,7 @@ import { audit, type Actor } from "@/lib/audit";
 import { withTenant } from "@/lib/db/tenant-context";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
+import { readTransferSnapshot } from "@/modules/payments/transfers";
 import { publicTransferInfo } from "@/modules/payments/public";
 import { reportTransferInTx } from "@/modules/payments/transfers";
 import { publicTenantContext } from "@/modules/tenant/public";
@@ -63,6 +64,7 @@ async function loadByCode(slug: string, code: string, token: string) {
         paymentStatus: true,
         amountDue: true,
         transferReportedAt: true,
+        transferSnapshot: true,
         court: { select: { name: true, sport: true } },
         tenant: { select: { name: true, timezone: true, contactPhone: true, address: true, publicCancellationMinutes: true } },
       },
@@ -97,7 +99,9 @@ export async function getPublicBooking(slug: string, code: string, token: string
     amountDue: b.amountDue,
     transferReportedAt: b.transferReportedAt,
     // Datos para transferir: solo mientras la reserva espera la transferencia o su revisión.
-    transfer: !expired && b.status === "PENDING" && (b.paymentStatus === "AWAITING_TRANSFER" || b.paymentStatus === "TRANSFER_REPORTED") ? await publicTransferInfo(ctx) : null,
+    transfer: !expired && b.status === "PENDING" && (b.paymentStatus === "AWAITING_TRANSFER" || b.paymentStatus === "TRANSFER_REPORTED")
+      ? (readTransferSnapshot(b.transferSnapshot) ?? (await publicTransferInfo(ctx)))
+      : null,
   };
 }
 
