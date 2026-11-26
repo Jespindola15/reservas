@@ -64,6 +64,20 @@ function createAuth() {
       logger.info("auth.password_reset_requested", { userId: user.id });
     },
   },
+  // Verificación de email: NO es obligatoria para ingresar (las cuentas existentes siguen
+  // funcionando igual). Enlace firmado de un solo propósito, vence en 24 h, viaja cifrado por la cola.
+  emailVerification: {
+    sendOnSignUp: false,
+    autoSignInAfterVerification: false,
+    expiresIn: 60 * 60 * 24,
+    sendVerificationEmail: async ({ user, url, token }) => {
+      const sealedUrl = await seal(url);
+      await withSystem((tx) =>
+        enqueue(tx, { tenantId: null, kind: "email_verification", recipient: user.email, dedupeKey: `email_verification:${createHash("sha256").update(token).digest("hex").slice(0, 32)}`, payload: { sealedUrl } }),
+      );
+      logger.info("auth.email_verification_requested", { userId: user.id });
+    },
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 días
     updateAge: 60 * 60 * 24, // renueva como máximo una vez por día
@@ -81,6 +95,8 @@ function createAuth() {
       "/sign-in/email": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 30 } : false),
       "/request-password-reset": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
       "/reset-password": { window: 15 * 60, max: 10 },
+      "/send-verification-email": (req) => (hasClientIp(req, env.AUTH_CLIENT_IP_HEADER) ? { window: 15 * 60, max: 5 } : false),
+      "/verify-email": { window: 15 * 60, max: 20 },
       // Segundo factor: pocos intentos por ventana (además del bloqueo propio del plugin).
       "/two-factor/verify-totp": { window: 10 * 60, max: 10 },
       "/two-factor/verify-backup-code": { window: 10 * 60, max: 5 },
@@ -92,13 +108,15 @@ function createAuth() {
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/sign-in/email" && ctx.path !== "/request-password-reset") return;
+      if (ctx.path !== "/sign-in/email" && ctx.path !== "/request-password-reset" && ctx.path !== "/send-verification-email") return;
       const email = typeof ctx.body?.email === "string" ? ctx.body.email.trim().toLowerCase().slice(0, 254) : "";
       if (!email) return;
       // Se guarda un hash, no el email en claro.
       const emailKey = createHash("sha256").update(email).digest("hex").slice(0, 32);
+      // Por cuenta: 10 inicios de sesión cada 15 min; 3 emails de recuperación o verificación por hora.
       const rule = ctx.path === "/sign-in/email" ? { window: 15 * 60, max: 10 } : { window: 60 * 60, max: 3 };
-      const res = await consumeRateLimit(`auth:${ctx.path === "/sign-in/email" ? "account" : "reset"}:${emailKey}`, rule);
+      const bucket = ctx.path === "/sign-in/email" ? "account" : ctx.path === "/request-password-reset" ? "reset" : "verify";
+      const res = await consumeRateLimit(`auth:${bucket}:${emailKey}`, rule);
       if (!res.allowed) {
         logger.warn("auth.account_rate_limited", { retryAfter: res.retryAfter });
         throw new APIError("TOO_MANY_REQUESTS", { message: "Demasiados intentos. Probá más tarde." });

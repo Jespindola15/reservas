@@ -551,6 +551,18 @@ test("superadmin: métricas comerciales, estado del sistema y pago de suscripci�
   await page.goto("/admin/sistema");
   await expect(page.getByRole("heading", { name: "Tareas programadas" })).toBeVisible();
   await expect(page.getByText(/MB del plan gratuito/)).toBeVisible();
+  // Fase 6: panel de correos con cupo diario, filtros y correo de prueba solo a direcciones autorizadas.
+  await page.getByRole("link", { name: "Correos" }).first().click();
+  await expect(page.getByRole("heading", { name: "Correos", level: 1 })).toBeVisible();
+  await expect(page.getByText("Cupo diario usado")).toBeVisible();
+  await expect(page.getByText(/\d+\/300/)).toBeVisible();
+  await page.getByRole("button", { name: "Enviar correo de prueba" }).click();
+  const test = page.getByRole("dialog", { name: "Correo de prueba" });
+  await expect(test.getByLabel("Destinatario autorizado").locator("option")).toHaveCount(1);
+  await test.getByRole("button", { name: "Enviar prueba" }).click();
+  await expect(page.getByText(/ACEPTÓ el correo de prueba/).filter({ visible: true })).toBeVisible();
+  await page.goto("/admin/correos?tipo=admin_test");
+  await expect(page.getByRole("cell", { name: /Correo de prueba/ }).first()).toBeVisible();
   await page.goto("/admin/planes");
   await page.getByRole("button", { name: "Registrar pago" }).click();
   const form = page.getByRole("dialog", { name: "Registrar pago de suscripción" });
@@ -613,6 +625,10 @@ test("jugador con cuenta: registro, explorar, ficha, favorito, reserva con datos
   await expect(page.getByRole("region", { name: "Canceladas y vencidas" }).getByRole("listitem").filter({ hasText: "Pádel Centro" }).first()).toContainText("Cancelada");
 
   await page.goto("/perfil");
+  // Fase 6: aviso para confirmar el email (no bloquea el uso de la cuenta) y reenvío del enlace.
+  await expect(page.getByText("Confirmá tu email.")).toBeVisible();
+  await page.getByRole("button", { name: "Enviarme el enlace" }).click();
+  await expect(page.getByText(/Te enviamos un nuevo enlace/)).toBeVisible();
   await expect(page.getByRole("region", { name: "Complejos favoritos" }).getByRole("link", { name: /Pádel Centro/ })).toBeVisible();
   await page.getByLabel("Ciudad").fill("Funes");
   await page.getByRole("button", { name: "Guardar cambios" }).click();

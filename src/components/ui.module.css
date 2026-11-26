@@ -147,6 +147,7 @@
   .tableResponsive td:first-child { display: block; text-align: left; font-size: 1rem; }
   .tableResponsive td:first-child::before { display: none; }
   .tableResponsive td:first-child, .tableResponsive td:first-child > * { text-align: left; justify-self: start; }
+  .tableResponsive td.hideMobileEmpty { display: none; }
 }
 
 /* Lista de filas (alternativa liviana a tabla) */

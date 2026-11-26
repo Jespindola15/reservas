@@ -43,6 +43,9 @@ export const ERROR_CATALOG = {
   REFERENCE_ALREADY_USED: { status: 409, message: "Ese número de operación ya se usó para confirmar otra reserva. Revisá el comprobante en tu banco." },
   IMAGE_STORAGE_REQUIRED: { status: 503, message: "La carga de imágenes todavía no está habilitada (falta configurar el almacenamiento de imágenes). Avisá al soporte de TURNUP." },
   ALREADY_PROCESSED: { status: 409, message: "Esta operación ya fue procesada por otra persona. Actualizá la página." },
+  EMAIL_TEST_FAILED: { status: 502, message: "El proveedor de email rechazó el correo de prueba. El motivo figura en la tabla de envíos." },
+  EMAIL_NOT_RETRYABLE: { status: 400, message: "Este email llevaba un enlace secreto que ya se borró: no se puede reintentar. La persona puede pedirlo de nuevo." },
+  EMAIL_RECIPIENT_NOT_ALLOWED: { status: 400, message: "La prueba solo puede ir a tu email o a una dirección autorizada en EMAIL_TEST_RECIPIENTS." },
   RATE_LIMITED: { status: 429, message: "Demasiados intentos. Esperá un momento y volvé a probar." },
   INTERNAL: { status: 500, message: "Ocurrió un error inesperado. Intentá nuevamente." },
 } as const;

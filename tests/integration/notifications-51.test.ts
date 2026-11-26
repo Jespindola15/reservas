@@ -44,11 +44,15 @@ describe("emails de la Fase 5.1 (plantillas listas; se envían solo con proveedo
     const s2 = await processNotifications({ provider: mem, now: later });
     expect(s2.claimed).toBe(0);
     const subjects = mem.sent.map((m) => `${m.to}: ${m.subject}`).join(" | ");
-    const awaiting = mem.sent.find((m) => /no está confirmado/i.test(m.subject) && m.to === "jugador1@example.com")!;
+    const awaiting = mem.sent.find((m) => /Transferí para confirmar/i.test(m.subject) && m.to === "jugador1@example.com")!;
     expect(awaiting.html).toContain("cancha.not51");
     expect(awaiting.html).not.toMatch(/devoluci[oó]n autom[aá]tica/i);
     expect(subjects).toMatch(/confirmad/i);
-    expect(mem.sent.some((m) => m.to === "dueno@not51.test" && /informó|informada/i.test(m.subject))).toBe(true);
+    expect(mem.sent.some((m) => m.to === "dueno@not51.test" && /para verificar/i.test(m.subject))).toBe(true);
+    // Fase 6: el jugador recibe "transferencia informada" y, al verificarse, UN solo email de pago aprobado.
+    expect(mem.sent.some((m) => m.to === "jugador1@example.com" && /Transferencia informada/i.test(m.subject))).toBe(true);
+    expect(mem.sent.filter((m) => m.to === "jugador1@example.com" && /confirmad/i.test(m.subject))).toHaveLength(1);
+    expect(mem.sent.some((m) => /Pago aprobado/.test(m.subject))).toBe(true);
   });
 
   it("rechazo, incidencia y vencimiento generan su email; los avisos internos no dependen del proveedor", async () => {
@@ -60,11 +64,11 @@ describe("emails de la Fase 5.1 (plantillas listas; se envían solo con proveedo
     await owner.booking.update({ where: { id: b.booking.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     await expirePendingBookings();
     const k = await kinds();
-    expect(k).toEqual(expect.arrayContaining(["booking_cancelled", "owner_payment_incident", "booking_expired"]));
+    expect(k).toEqual(expect.arrayContaining(["payment_rejected", "owner_payment_incident", "booking_expired"]));
     // Sin proveedor (EMAIL_PROVIDER desactivado) los emails quedan pendientes, pero el aviso interno existe igual.
     expect(await owner.inboxNotification.count({ where: { tenantId: f.tenant.id } })).toBeGreaterThan(0);
     await processNotifications({ provider: mem, now: later });
-    expect(mem.sent.some((m) => /rechaz|cancelad/i.test(m.subject))).toBe(true);
+    expect(mem.sent.some((m) => /No se pudo verificar tu pago/i.test(m.subject))).toBe(true);
     expect(mem.sent.some((m) => /venci/i.test(m.subject))).toBe(true);
     expect(mem.sent.some((m) => /incidencia/i.test(m.subject))).toBe(true);
   });

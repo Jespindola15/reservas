@@ -67,3 +67,21 @@ export async function updatePlayerProfile(userId: string, input: z.input<typeof 
   await prisma.user.update({ where: { id: userId }, data: { name } });
   await withPlayer(userId, (tx) => tx.playerProfile.upsert({ where: { userId }, create: { userId, ...data }, update: data }));
 }
+
+/**
+ * Emails de alta del jugador: bienvenida (prioridad baja) y verificación de email (crítica).
+ * Nunca hace fallar el registro: si algo falla, la cuenta ya existe y se puede reenviar la
+ * verificación desde el perfil.
+ */
+export async function sendPlayerOnboardingEmails(userId: string, email: string) {
+  const { withSystem } = await import("@/lib/db/tenant-context");
+  const { enqueue } = await import("@/modules/notifications/outbox");
+  await withSystem((tx) => enqueue(tx, { tenantId: null, kind: "player_welcome", recipient: email, dedupeKey: `welcome:player:${userId}` }));
+  await requestEmailVerification(email);
+}
+
+/** Pide a Better Auth el enlace de verificación (firmado, 24 h); el email sale por la cola. */
+export async function requestEmailVerification(email: string) {
+  const { getAuth } = await import("@/lib/auth/auth");
+  await getAuth().api.sendVerificationEmail({ body: { email, callbackURL: "/perfil?verificado=1" } });
+}

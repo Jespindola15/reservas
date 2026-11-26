@@ -340,7 +340,7 @@ export async function confirmTransfer(ctx: TenantContext, input: z.input<typeof 
       tenantId: ctx.tenantId, actor, action: "booking.transfer.verified", entityType: "booking", entityId: b.id,
       metadata: { receivedAmount: d.receivedAmount, expectedAmount: b.amountDue, hasReference: Boolean(reference), difference: diff },
     });
-    await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "confirmed" });
+    await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "confirmed", via: "transfer" });
     await notifyBookingPlayer(tx, b.id, { kind: "booking_confirmed", title: "¡Reserva confirmada!", body: `El complejo verificó tu pago. Reserva ${b.code}.`, link: "/mis-turnos" });
     return { code: b.code };
   });
@@ -372,7 +372,7 @@ export async function rejectTransfer(ctx: TenantContext, input: z.input<typeof r
       });
     }
     await audit(tx, { tenantId: ctx.tenantId, actor, action: "booking.transfer.rejected", entityType: "booking", entityId: b.id, metadata: { moneyReceived: d.moneyReceived } });
-    await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "rejected", reason: d.reason });
+    await enqueueBookingEvent(tx, ctx.tenantId, b.id, { type: "rejected", reason: d.reason, via: "transfer" });
     await notifyBookingPlayer(tx, b.id, { kind: "booking_rejected", title: "Reserva rechazada", body: `El complejo rechazó la reserva ${b.code}: ${d.reason}`, link: "/mis-turnos" });
     return { code: b.code };
   });

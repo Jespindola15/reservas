@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { emailProviderName, getEnv } from "@/lib/env";
+import { emailConfigIssues, emailProviderName, getEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { hasCronSecret } from "@/lib/security/internal-auth";
 import { healthSnapshot } from "@/modules/jobs/runner";
@@ -36,6 +36,7 @@ export async function GET(req: Request) {
   const env = getEnv();
   if (!env.AUTH_CLIENT_IP_HEADER) warnings.push("AUTH_CLIENT_IP_HEADER sin configurar (rate limiting por IP inactivo)");
   if (emailProviderName() === "disabled") warnings.push("Emails desactivados (EMAIL_PROVIDER)");
+  for (const issue of emailConfigIssues()) warnings.push(issue);
   if (!env.CRON_SECRET) warnings.push("CRON_SECRET vacío: la tarea programada no puede ejecutarse");
   if (jobsStale) warnings.push("La tarea programada no corrió en los últimos 75 minutos (corre cada 30)");
   if (!snap.safety.ok) {

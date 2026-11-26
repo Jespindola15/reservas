@@ -138,11 +138,14 @@ describe("outbox de notificaciones", () => {
     const moved = await rescheduleBooking(actx, { bookingId: booking.id, courtId: f.court2.id, startsAt: at(DAY, "21:30"), durationMinutes: 90, expectedVersion: booking.version }, { type: "USER", userId: admin.id }, opts);
     expect((await notifs()).some((r) => r.kind === "booking_rescheduled")).toBe(true);
 
-    const before = new Date(moved.startsAt.getTime() - 2 * 3_600_000);
+    // La reserva se hizo con menos de 26 h: no hay recordatorio de 24 h, solo el de 2 h.
+    await owner.booking.update({ where: { id: booking.id }, data: { createdAt: new Date(moved.startsAt.getTime() - 10 * 3_600_000) } });
+    const before = new Date(moved.startsAt.getTime() - 2 * 3_600_000 + 60_000);
     await scheduleTimedNotifications(before);
     await scheduleTimedNotifications(before);
-    const reminders = (await notifs()).filter((r) => r.kind === "booking_reminder");
+    const reminders = (await notifs()).filter((r) => r.kind.startsWith("booking_reminder"));
     expect(reminders).toHaveLength(1);
+    expect(reminders[0]!.kind).toBe("booking_reminder_2h");
     expect(reminders[0]!.dedupeKey).toContain(moved.startsAt.toISOString());
   });
 });

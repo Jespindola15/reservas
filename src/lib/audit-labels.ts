@@ -74,6 +74,8 @@ const ACTIONS: Record<string, string> = {
   "platform.subscription.assigned": "Plan asignado",
   "platform.subscription.trial_extended": "Prueba extendida",
   "platform.subscription.payment_recorded": "Pago de suscripción registrado",
+  "platform.email.retried": "Reintento manual de email",
+  "platform.email.test": "Correo de prueba enviado",
   "platform.plan.created": "Plan creado",
   "platform.plan.updated": "Plan modificado",
   "platform.user.suspended": "Usuario suspendido",
@@ -98,7 +100,7 @@ export function actionLabel(action: string): string {
 
 export const ENTITY_LABEL: Record<string, string> = {
   booking: "Reserva", court: "Cancha", tenant: "Complejo", user: "Usuario", subscription: "Suscripción", plan: "Plan",
-  customer: "Cliente", review: "Opinión", invitation: "Invitación", membership: "Acceso", block: "Bloqueo", payment_incident: "Incidencia",
+  customer: "Cliente", review: "Opinión", invitation: "Invitación", membership: "Acceso", block: "Bloqueo", payment_incident: "Incidencia", notification: "Email",
 };
 
 export const ACTOR_LABEL: Record<string, string> = { USER: "Usuario", PLATFORM_ADMIN: "Superadministrador", PUBLIC: "Público (jugador)", SYSTEM: "Sistema" };

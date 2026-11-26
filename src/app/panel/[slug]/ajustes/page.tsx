@@ -8,6 +8,15 @@ import { updateSettingsAction } from "../config-actions";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
+const OWNER_KIND_OPTIONS: [string, string][] = [
+  ["owner_new_request", "Nuevas reservas y solicitudes online"],
+  ["owner_transfer_reported", "Transferencias informadas para verificar"],
+  ["owner_transfer_expiring", "Transferencias por vencer sin verificar"],
+  ["owner_booking_cancelled", "Cancelaciones de jugadores"],
+  ["owner_payment_incident", "Incidencias de pago"],
+  ["owner_subscription_notice", "Vencimiento de la suscripción de TURNUP"],
+];
+
 export default async function SettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const access = await requireTenantPage(slug, "tenant.settings");
@@ -58,19 +67,32 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           </div>
         </section>
         <section className={ui.card}>
-          <div className={ui.cardHeader}><h2>Notificaciones por email</h2></div>
+          <div className={ui.cardHeader}><h2>Avisos por email</h2></div>
           <div className={ui.stackSm} style={{ marginBottom: "0.9rem" }}>
-            <label className={ui.checkbox}><input type="checkbox" name="notificationsEnabled" defaultChecked={s.notificationsEnabled} />Enviar notificaciones de este complejo</label>
-            <label className={ui.checkbox}><input type="checkbox" name="notifyPlayers" defaultChecked={s.notifyPlayers} />A los jugadores: solicitud recibida, confirmación, cambios, cancelación y recordatorio</label>
-            <label className={ui.checkbox}><input type="checkbox" name="notifyOwner" defaultChecked={s.notifyOwner} />Al complejo: nuevas reservas y cancelaciones online</label>
-            <label className={ui.checkbox}><input type="checkbox" name="digestEnabled" defaultChecked={s.digestEnabled} />Resumen diario con los turnos de las próximas 24 h</label>
+            <label className={ui.checkbox}><input type="checkbox" name="notificationsEnabled" defaultChecked={s.notificationsEnabled} />Enviar emails de este complejo</label>
           </div>
-          <div className={ui.grid2}>
-            <label className={ui.field}><span className={ui.label}>Email que recibe los avisos</span><input className={ui.input} type="email" name="ownerNotificationEmail" maxLength={254} defaultValue={s.ownerNotificationEmail ?? ""} placeholder={s.contactEmail ?? ""} /><span className={ui.hint}>Si lo dejás vacío se usa el email de contacto.</span></label>
-            {num("reminderHoursBefore", "Recordatorio al jugador (horas antes)", 0, 48, "0 desactiva el recordatorio.")}
+          <fieldset className={ui.fieldset}>
+            <legend className={ui.label}>A los jugadores</legend>
+            <div className={ui.stackSm}>
+              <label className={ui.checkbox}><input type="checkbox" name="notifyPlayers" defaultChecked={s.notifyPlayers} />Solicitud recibida, datos para transferir, pago aprobado o rechazado, confirmación, cambios y cancelaciones</label>
+              <label className={ui.checkbox}><input type="checkbox" name="reminders" defaultChecked={s.reminderHoursBefore > 0} />Recordatorios 24 h y 2 h antes del turno (solo reservas confirmadas)</label>
+            </div>
+          </fieldset>
+          <fieldset className={ui.fieldset} style={{ marginTop: "0.9rem" }}>
+            <legend className={ui.label}>Al complejo</legend>
+            <div className={ui.stackSm}>
+              <label className={ui.checkbox}><input type="checkbox" name="notifyOwner" defaultChecked={s.notifyOwner} />Recibir avisos del complejo por email</label>
+              {OWNER_KIND_OPTIONS.map(([k, label]) => (
+                <label key={k} className={ui.checkbox} style={{ paddingLeft: "1.5rem" }}><input type="checkbox" name={`ownerKind:${k}`} defaultChecked={!s.ownerEmailMuted.includes(k)} />{label}</label>
+              ))}
+              <label className={ui.checkbox} style={{ paddingLeft: "1.5rem" }}><input type="checkbox" name="digestEnabled" defaultChecked={s.digestEnabled} />Resumen diario con los turnos de las próximas 24 h</label>
+            </div>
+          </fieldset>
+          <div className={ui.grid2} style={{ marginTop: "0.9rem" }}>
+            <label className={ui.field}><span className={ui.label}>Email que recibe los avisos del complejo</span><input className={ui.input} type="email" name="ownerNotificationEmail" maxLength={254} defaultValue={s.ownerNotificationEmail ?? ""} placeholder={s.contactEmail ?? ""} /><span className={ui.hint}>Si lo dejás vacío se usa el email de contacto.</span></label>
             {num("digestHour", "Hora del resumen diario (0–23)", 0, 23, `Hora local (${s.timezone}).`)}
           </div>
-          <p className={ui.hint} style={{ marginTop: "0.75rem" }}>Los emails se envían solo si el servidor tiene un proveedor configurado. Un turno cancelado o reprogramado nunca recibe un recordatorio viejo.</p>
+          <p className={ui.hint} style={{ marginTop: "0.75rem" }}>Las invitaciones al equipo y la recuperación de contraseña siempre se envían. Un turno cancelado o reprogramado nunca recibe un recordatorio viejo. Los emails a jugadores usan el email de contacto del complejo como dirección de respuesta.</p>
         </section>
       </ActionForm>
     </>

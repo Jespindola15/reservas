@@ -24,6 +24,8 @@ export const E2E_ENV = {
   SEED_OWNER_PASSWORD: "e2e-owner-pass-1234",
   // Las pruebas locales no tienen Supabase Storage: se permite guardar imágenes en la base solo acá.
   ALLOW_DB_IMAGES: "true",
+  // Los emails se "envían" al registro del servidor (nunca salen a internet): prueba la cola completa.
+  EMAIL_PROVIDER: "log",
 };
 
 export default defineConfig({

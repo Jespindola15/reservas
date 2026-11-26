@@ -3,7 +3,7 @@ import { fmtDateTime } from "@/lib/format";
 import { Icon } from "@/components/shell/icons";
 import ui from "@/components/ui.module.css";
 import { requireSuperadminPage } from "@/lib/auth/dal";
-import { getEnv } from "@/lib/env";
+import { emailConfigIssues, getEnv } from "@/lib/env";
 import { withPlatformAdmin } from "@/lib/db/tenant-context";
 import { platformOverview } from "@/modules/platform/billing";
 import { imageStorageReachable, imageStorageUsage } from "@/lib/storage/usage";
@@ -34,10 +34,15 @@ export default async function SystemPage() {
     ]);
     return { pending, failed };
   });
+  const emailOn = o.system.emailProvider === "brevo" || o.system.emailProvider === "resend";
   const pct = Math.round((o.system.dbBytes / o.system.dbLimitBytes) * 100);
   const [images, reachable] = await Promise.all([withPlatformAdmin(user.id, (tx) => imageStorageUsage(tx)), imageStorageReachable()]);
   const config = [
-    { name: "Emails (Resend)", ok: o.system.emailProvider === "resend", detail: o.system.emailProvider === "resend" ? "Configurado" : `Modo ${o.system.emailProvider}: no se envían emails; los avisos internos funcionan igual.` },
+    {
+      name: "Emails",
+      ok: emailOn && emailConfigIssues().length === 0,
+      detail: emailConfigIssues()[0] ?? (emailOn ? `Proveedor ${o.system.emailProvider === "brevo" ? "Brevo" : "Resend"} · detalle y cupo en Correos` : `Modo ${o.system.emailProvider}: no se envían emails; los avisos internos funcionan igual.`),
+    },
     {
       name: "Imágenes en Supabase Storage",
       ok: env.IMAGE_STORAGE === "object" && Boolean(env.S3_BUCKET) && reachable !== false,
@@ -58,7 +63,7 @@ export default async function SystemPage() {
 
       <section className={ui.stats} aria-label="Infraestructura">
         <div className={`${ui.statTile} ${pct >= 70 ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Base de datos (Neon)</span><span className={ui.statValue}>{(o.system.dbBytes / 1048576).toFixed(1)} MB</span><span className={ui.statHint}>{pct}% de {Math.round(o.system.dbLimitBytes / 1048576)} MB del plan gratuito</span></div>
-        <div className={ui.statTile}><span className={ui.statLabel}>Emails en cola</span><span className={ui.statValue}>{queue.pending}</span><span className={ui.statHint}>{o.system.emailProvider === "resend" ? "Se envían en la próxima tarea" : "Sin proveedor: no se envían"}</span></div>
+        <div className={ui.statTile}><span className={ui.statLabel}>Emails en cola</span><span className={ui.statValue}>{queue.pending}</span><span className={ui.statHint}>{emailOn ? "Se envían al momento o en la próxima tarea" : "Sin proveedor: no se envían"}</span></div>
         <div className={`${ui.statTile} ${queue.failed ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Emails fallidos</span><span className={ui.statValue}>{queue.failed}</span></div>
         <div className={`${ui.statTile} ${images.level !== "ok" ? ui.statTileAlert : ""}`}><span className={ui.statLabel}>Imágenes</span><span className={ui.statValue}>{(images.bytes / 1048576).toFixed(1)} MB</span><span className={ui.statHint}>{images.count} imágenes · {images.pct}% de {Math.round(images.quotaBytes / 1048576)} MB</span></div>
         <div className={ui.statTile}><span className={ui.statLabel}>Tareas programadas</span><span className={ui.statValue}>{o.system.jobs.filter((j) => !j.stale).length}/{o.system.jobs.length}</span><span className={ui.statHint}>al día</span></div>

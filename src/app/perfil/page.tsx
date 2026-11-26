@@ -11,12 +11,14 @@ import { cachedCatalog } from "@/modules/marketplace/cached";
 import { getPlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
 import { listFavoriteTenantIds } from "@/modules/player/favorites";
 import { SignOutButton } from "../panel/SignOutButton";
-import { updateProfileAction } from "../cuenta/actions";
+import { resendVerificationAction, updateProfileAction } from "../cuenta/actions";
+import { prisma } from "@/lib/db/prisma";
 import { initials } from "@/components/player/initials";
 
 export const metadata: Metadata = { title: "Mi perfil — TURNUP" };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ verificado?: string; error?: string }> }) {
+  const sp = await searchParams;
   const user = await getCurrentUser().catch(() => null);
   if (!user) {
     return (
@@ -35,6 +37,7 @@ export default async function ProfilePage() {
   }
   const [profile, favIds, catalog, tenants] = await Promise.all([getPlayerProfile(user.id), listFavoriteTenantIds(user.id), cachedCatalog(), listMyTenants(user.id)]);
   const favorites = catalog.filter((c) => favIds.includes(c.id));
+  const verified = (await prisma.user.findUnique({ where: { id: user.id }, select: { emailVerified: true } }))?.emailVerified === true;
 
   return (
     <PlayerShell user={user}>
@@ -45,6 +48,14 @@ export default async function ProfilePage() {
           <span className={ui.muted}>{user.name} · {user.email}</span>
         </div>
       </header>
+      {sp.verificado && verified ? <p role="status" className={`${ui.alert} ${ui.alertOk}`}>¡Listo! Confirmaste tu email.</p> : null}
+      {sp.error && !verified ? <p role="alert" className={`${ui.alert} ${ui.alertError}`}>El enlace de verificación venció o ya se usó. Pedí uno nuevo.</p> : null}
+      {!verified ? (
+        <div className={`${ui.alert} ${ui.alertWarn}`}>
+          <p style={{ margin: "0 0 var(--sp-2)" }}><strong>Confirmá tu email.</strong> Así te llegan los avisos de tus reservas y podés recuperar la cuenta. Podés seguir usando TURNUP mientras tanto.</p>
+          <ActionForm action={resendVerificationAction} submitLabel="Enviarme el enlace" variant="secondary" small />
+        </div>
+      ) : null}
       {tenants.length || user.platformRole === "SUPERADMIN" ? (
         <Link className={styles.rowLink} href={user.platformRole === "SUPERADMIN" ? "/admin" : "/panel"}>
           <span><strong>Ir al panel</strong><span className={ui.faint}>También administrás {user.platformRole === "SUPERADMIN" ? "la plataforma" : tenants.length === 1 ? "un complejo" : "complejos"}</span></span>

@@ -255,6 +255,7 @@ test("responsive: superadministrador", async ({ page }) => {
   p.push(...(await audit(page, "admin-usuarios", "/admin/usuarios", "superadmin")));
   p.push(...(await audit(page, "admin-planes", "/admin/planes", "superadmin")));
   p.push(...(await audit(page, "admin-sistema", "/admin/sistema", "superadmin")));
+  p.push(...(await audit(page, "admin-correos", "/admin/correos", "superadmin")));
   p.push(...(await audit(page, "admin-auditoria", "/admin/auditoria", "superadmin")));
   const id = await page.evaluate(async () => (await fetch("/admin/complejos")).ok);
   expect(id).toBe(true);

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { audit, type Actor } from "@/lib/audit";
 import { withTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { parseOrThrow } from "@/lib/validation";
+import { OWNER_MUTABLE_KINDS } from "@/modules/notifications/outbox";
 
 /** Ajustes que el propio complejo puede cambiar. Límites seguros = los mismos CHECK de la BD. */
 export const tenantSettingsSchema = z.object({
@@ -22,6 +23,8 @@ export const tenantSettingsSchema = z.object({
   reminderHoursBefore: z.number().int().min(0).max(48),
   digestEnabled: z.boolean(),
   digestHour: z.number().int().min(0).max(23),
+  /** Avisos al complejo que NO se quieren recibir por email. */
+  ownerEmailMuted: z.array(z.enum(OWNER_MUTABLE_KINDS)).max(OWNER_MUTABLE_KINDS.length).default([]).transform((v) => [...new Set(v)]),
 });
 export type TenantSettingsInput = z.input<typeof tenantSettingsSchema>;
 
@@ -50,6 +53,7 @@ export async function getTenantSettings(ctx: TenantContext) {
         reminderHoursBefore: true,
         digestEnabled: true,
         digestHour: true,
+        ownerEmailMuted: true,
       },
     }),
   );

@@ -257,6 +257,8 @@ model Tenant {
   notifyOwner               Boolean      @default(true) @map("notify_owner")
   /// Destino de los avisos al complejo (si es null se usa contactEmail).
   ownerNotificationEmail    String?      @map("owner_notification_email")
+  /// Avisos al complejo que NO se envían por email (vacío = todos).
+  ownerEmailMuted           String[]     @default([]) @map("owner_email_muted")
   /// Horas antes del turno para el recordatorio (0 = sin recordatorio).
   reminderHoursBefore       Int          @default(3) @map("reminder_hours_before")
   digestEnabled             Boolean      @default(false) @map("digest_enabled")
@@ -795,6 +797,13 @@ model Notification {
   lockedAt          DateTime?          @map("locked_at") @db.Timestamptz(3)
   lastError         String?            @map("last_error")
   providerMessageId String?            @map("provider_message_id")
+  /// 1 = crítico (contraseña, verificación) … 5 = recordatorios y bienvenidas (cupo diario).
+  priority          Int                @default(3) @db.SmallInt
+  /// Proveedor que aceptó el envío (brevo, resend, log…).
+  provider          String?
+  /// Estado de entrega informado por el webhook del proveedor (aceptado ≠ entregado).
+  deliveryStatus    String?            @map("delivery_status")
+  deliveryUpdatedAt DateTime?          @map("delivery_updated_at") @db.Timestamptz(3)
   sentAt            DateTime?          @map("sent_at") @db.Timestamptz(3)
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -802,6 +811,9 @@ model Notification {
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([status, nextAttemptAt])
+  @@index([status, priority, nextAttemptAt], map: "notifications_queue_idx")
+  @@index([sentAt], map: "notifications_sent_at_idx")
+  @@index([providerMessageId], map: "notifications_provider_message_id_idx")
   @@index([tenantId, createdAt])
   @@map("notifications")
 }

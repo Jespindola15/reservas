@@ -55,6 +55,9 @@ export async function createTenant(user: AuthUser, input: z.input<typeof createT
         entityId: tenant.id,
         metadata: { slug: tenant.slug },
       });
+      // Aviso a los DEMÁS superadministradores (quien lo creó ya lo sabe).
+      const { enqueueForSuperadmins } = await import("@/modules/notifications/processor");
+      await enqueueForSuperadmins(tx, "admin_tenant_created", `admin:tenant-created:${tenant.id}`, undefined, user.id, tenant.id);
       return tenant;
     });
   } catch (e) {

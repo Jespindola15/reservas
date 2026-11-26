@@ -34,13 +34,24 @@ const schema = z
     EXPIRATION_SCHEDULER: z.enum(["internal", "off"]).default("internal"),
     EXPIRATION_INTERVAL_SECONDS: z.coerce.number().int().min(15).max(3600).default(60),
     /**
-     * Proveedor de email. Por defecto: memory en test (nunca envía), log en
-     * desarrollo, disabled en producción hasta que se configure Resend.
+     * Proveedor de email: brevo (activo), resend (alternativo), log (desarrollo), memory (pruebas)
+     * o disabled. Un valor desconocido NO impide arrancar: los emails quedan desactivados y
+     * /admin/correos lo informa (un error de configuración del correo nunca debe tirar el sitio).
      */
-    EMAIL_PROVIDER: z.enum(["resend", "log", "memory", "disabled"]).optional(),
+    EMAIL_PROVIDER: z.string().trim().toLowerCase().optional(),
     RESEND_API_KEY: z.string().optional(),
-    /** Remitente verificado en Resend, p. ej. "TURNUP <avisos@tudominio.com>". */
+    /** Clave de la API transaccional de Brevo (solo servidor). */
+    BREVO_API_KEY: z.string().trim().optional(),
+    /** Remitente: "avisos@dominio" o "TURNUP <avisos@dominio>". Con Brevo, debe ser un remitente verificado. */
     EMAIL_FROM: z.string().max(200).default("TURNUP <no-reply@turnup.invalid>"),
+    /** Nombre visible del remitente (si EMAIL_FROM no lo trae). */
+    EMAIL_FROM_NAME: z.string().trim().max(70).default("TURNUP"),
+    /** Límite diario del plan del proveedor (Brevo gratuito: 300). La app reserva cupo para lo crítico. */
+    EMAIL_DAILY_LIMIT: z.coerce.number().int().min(1).max(1_000_000).default(300),
+    /** Secreto del webhook de eventos de entrega de Brevo (Bearer o usuario/contraseña). Vacío = webhook apagado. */
+    BREVO_WEBHOOK_SECRET: z.union([z.literal(""), z.string().min(24)]).default(""),
+    /** Direcciones extra autorizadas para el correo de prueba del superadmin (separadas por coma). */
+    EMAIL_TEST_RECIPIENTS: z.string().max(1000).default(""),
     /** Webhook (Slack/Discord compatible) para alertas críticas. Opcional. */
     ALERT_WEBHOOK_URL: z.union([z.literal(""), z.url()]).default(""),
     /** Almacenamiento de imágenes: database (actual) u object (protocolo S3: Supabase Storage). */
@@ -60,9 +71,6 @@ const schema = z
     ALLOW_INSECURE_LOCALHOST: z.enum(["true", "false"]).default("false"),
   })
   .superRefine((env, ctx) => {
-    if (env.EMAIL_PROVIDER === "resend" && !env.RESEND_API_KEY) {
-      ctx.addIssue({ code: "custom", path: ["RESEND_API_KEY"], message: "Requerida con EMAIL_PROVIDER=resend" });
-    }
     if (env.IMAGE_STORAGE === "object" && !(env.S3_ENDPOINT && env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY)) {
       ctx.addIssue({ code: "custom", path: ["S3_ENDPOINT"], message: "IMAGE_STORAGE=object requiere S3_ENDPOINT, S3_BUCKET y credenciales" });
     }
@@ -124,8 +132,32 @@ export function getEnv(): Env {
 
 export const isProduction = () => getEnv().NODE_ENV === "production";
 
-export function emailProviderName(): "resend" | "log" | "memory" | "disabled" {
+export const EMAIL_PROVIDERS = ["brevo", "resend", "log", "memory", "disabled"] as const;
+export type EmailProviderName = (typeof EMAIL_PROVIDERS)[number];
+
+export function emailProviderName(): EmailProviderName {
   const env = getEnv();
-  if (env.EMAIL_PROVIDER) return env.EMAIL_PROVIDER;
+  const v = env.EMAIL_PROVIDER;
+  if (v) return (EMAIL_PROVIDERS as readonly string[]).includes(v) ? (v as EmailProviderName) : "disabled";
   return env.NODE_ENV === "test" ? "memory" : env.NODE_ENV === "production" ? "disabled" : "log";
+}
+
+/** Problemas de configuración del correo (no fatales): se muestran en /admin/correos y /admin/sistema. */
+export function emailConfigIssues(): string[] {
+  const env = getEnv();
+  const issues: string[] = [];
+  const v = env.EMAIL_PROVIDER;
+  if (v && !(EMAIL_PROVIDERS as readonly string[]).includes(v)) issues.push(`EMAIL_PROVIDER="${v.slice(0, 20)}" no es válido: los emails están desactivados.`);
+  const name = emailProviderName();
+  if (name === "brevo" && !env.BREVO_API_KEY) issues.push("Falta BREVO_API_KEY: los emails no se pueden enviar.");
+  if (name === "resend" && !env.RESEND_API_KEY) issues.push("Falta RESEND_API_KEY: los emails no se pueden enviar.");
+  if ((name === "brevo" || name === "resend") && !parseSender(env.EMAIL_FROM, env.EMAIL_FROM_NAME)) issues.push("EMAIL_FROM no es una dirección válida.");
+  return issues;
+}
+
+/** "Nombre <a@b.c>" o "a@b.c" → { email, name }. null si no hay una dirección válida. */
+export function parseSender(raw: string, fallbackName: string): { email: string; name: string } | null {
+  const m = raw.trim().match(/^(?:"?([^"<]*?)"?\s*<)?([^\s<>@]+@[^\s<>@]+\.[^\s<>@]+)>?$/);
+  if (!m || !m[2] || m[2].endsWith(".invalid")) return null;
+  return { email: m[2].toLowerCase(), name: (m[1] ?? "").trim() || fallbackName };
 }

@@ -1,5 +1,7 @@
 "use server";
 
+import { OWNER_MUTABLE_KINDS } from "@/modules/notifications/outbox";
+
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -260,9 +262,12 @@ export async function updateSettingsAction(slug: string, _p: ActionResult, fd: F
         notifyPlayers: fd.get("notifyPlayers") === "on",
         notifyOwner: fd.get("notifyOwner") === "on",
         ownerNotificationEmail: String(fd.get("ownerNotificationEmail") ?? ""),
-        reminderHoursBefore: num("reminderHoursBefore"),
+        // Recordatorios fijos de 24 h y 2 h: el ajuste solo los prende o apaga (0 = apagados).
+        reminderHoursBefore: fd.get("reminders") === "on" ? 24 : 0,
         digestEnabled: fd.get("digestEnabled") === "on",
         digestHour: num("digestHour"),
+        // Se envía la lista de avisos ACTIVOS; se guardan los apagados.
+        ownerEmailMuted: OWNER_MUTABLE_KINDS.filter((k) => fd.get(`ownerKind:${k}`) !== "on"),
       },
       actorOf(user.id),
     );

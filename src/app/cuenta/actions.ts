@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth/dal";
 import { AppError } from "@/lib/errors";
 import { getClientIp } from "@/lib/security/client-ip";
 import { claimBookingByLink } from "@/modules/booking/public-access";
-import { registerPlayer, updatePlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
+import { registerPlayer, requestEmailVerification, sendPlayerOnboardingEmails, updatePlayerProfile, PLAYER_SPORTS } from "@/modules/player/account";
 import { cancelPlayerBooking, reportPlayerTransfer } from "@/modules/player/bookings";
 import { toggleFavorite } from "@/modules/player/favorites";
 import { createReview, reportReviewAsPlayer } from "@/modules/player/reviews";
@@ -17,7 +17,7 @@ import { createReview, reportReviewAsPlayer } from "@/modules/player/reviews";
 export async function registerPlayerAction(_p: ActionResult, fd: FormData): Promise<ActionResult> {
   return runAction("player.register", async () => {
     const ip = getClientIp(await headers());
-    await registerPlayer(
+    const { userId } = await registerPlayer(
       {
         name: String(fd.get("name") ?? ""),
         email: String(fd.get("email") ?? ""),
@@ -29,6 +29,15 @@ export async function registerPlayerAction(_p: ActionResult, fd: FormData): Prom
       },
       ip,
     );
+    const email = String(fd.get("email") ?? "").trim().toLowerCase();
+    try {
+      await sendPlayerOnboardingEmails(userId, email);
+      dispatchEmailsSoon();
+    } catch (e) {
+      // El registro no depende del email: se puede reenviar la verificación desde el perfil.
+      const { logger } = await import("@/lib/logger");
+      logger.warn("player.onboarding_email_failed", { error: e instanceof Error ? e.message.slice(0, 120) : "unknown" });
+    }
     return "Cuenta creada.";
   });
 }
@@ -134,5 +143,19 @@ export async function reportReviewAction(slug: string, reviewId: string, _p: Act
     const user = await requireUser();
     await reportReviewAsPlayer(user.id, slug, reviewId, String(fd.get("reason") ?? ""));
     return "Gracias: el equipo de TURNUP va a revisar la opinión.";
+  });
+}
+
+/** Reenvía el email de verificación (cuentas existentes o enlace vencido). Límite: 3 por hora. */
+export async function resendVerificationAction(_p: ActionResult, _fd: FormData): Promise<ActionResult> {
+  return runAction("player.verify_resend", async () => {
+    const user = await requireUser();
+    const { prisma } = await import("@/lib/db/prisma");
+    const u = await prisma.user.findUnique({ where: { id: user.id }, select: { email: true, emailVerified: true } });
+    if (!u) throw new AppError("FORBIDDEN");
+    if (u.emailVerified) return "Tu email ya está verificado.";
+    await requestEmailVerification(u.email);
+    dispatchEmailsSoon();
+    return "Te enviamos un nuevo enlace. Revisá tu bandeja de entrada (y la carpeta de spam).";
   });
 }
